@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TTYDYN — 2D Impact Physics Sandbox</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="logo">▚ TTYDYN <span>2D IMPACT PHYSICS SANDBOX</span></div>
+  <nav>
+    <button id="tabSim" class="tab active">SIMULATOR</button>
+    <button id="tabEditor" class="tab">EDITOR</button>
+    <select id="experimentSel" title="Load experiment"></select>
+    <button id="loadExp">LOAD EXPERIMENT</button>
+  </nav>
+  <div id="libCounts" class="counts"></div>
+</header>
+
+<main id="simView">
+  <aside class="panel left">
+    <h2>PROJECTILE</h2>
+    <input id="projSearch" type="search" placeholder="Search projectiles…">
+    <div id="projList" class="list"></div>
+    <div id="projInfo" class="info"></div>
+    <h2>SAVED DESIGNS</h2>
+    <div id="designList" class="list small"></div>
+  </aside>
+
+  <section class="stage">
+    <canvas id="game" width="640" height="360"></canvas>
+    <div id="hud">
+      <span id="statFps">FPS 60</span><span id="statParts">particles 0</span>
+      <span id="statBonds">bonds 0</span><span id="statPen">penetration 0 mm</span>
+      <span id="statOutcome" class="outcome">READY — press FIRE</span>
+    </div>
+    <div id="tooltip"></div>
+    <div class="controls">
+      <button id="fireBtn" class="fire">🔥 FIRE</button>
+      <button id="pauseBtn">⏸ PAUSE</button>
+      <button id="resetBtn">↺ RESET</button>
+      <label>Velocity <b id="velVal">1200 m/s</b><input id="velSlider" type="range" min="50" max="2500" value="1200" step="10"></label>
+      <label>Angle <b id="angVal">0°</b><input id="angSlider" type="range" min="-25" max="25" value="0" step="1"></label>
+      <label>Speed
+        <select id="speedSel"><option value="0.25">×0.25 slo-mo</option><option value="0.5">×0.5</option><option value="1" selected>×1</option><option value="2">×2</option><option value="4">×4</option></select>
+      </label>
+      <label>Overlay
+        <select id="overlaySel"><option value="normal">Material</option><option value="temp">Temperature</option><option value="damage">Damage</option><option value="velocity">Velocity</option><option value="bonds">Bonds (debug)</option></select>
+      </label>
+      <label class="chk"><input type="checkbox" id="gravityChk" checked> Gravity</label>
+      <label class="chk"><input type="checkbox" id="followChk"> Follow projectile</label>
+      <button id="camBtn">⌖ CAMERA</button>
+      <button id="shotBtn">📷 PNG</button>
+    </div>
+    <p class="hint">Mouse wheel: zoom · Drag with right mouse / Shift: pan · WASD/arrows: pan · Hover particles to inspect material · Space: fire · P: pause · R: reset</p>
+  </section>
+
+  <aside class="panel right">
+    <h2>TARGET</h2>
+    <select id="targetFilter"><option value="all">All targets + vehicles</option><option value="target">Targets only</option><option value="vehicle">Vehicles only</option></select>
+    <input id="targSearch" type="search" placeholder="Search targets…">
+    <div id="targList" class="list"></div>
+    <div id="targInfo" class="info"></div>
+    <h2>MATERIAL INSPECTOR</h2>
+    <div id="matInfo" class="info">Hover the simulation or pick a material in the Editor palette.</div>
+  </aside>
+</main>
+
+<main id="editorView" hidden>
+  <aside class="panel left">
+    <h2>TOOLS</h2>
+    <div class="tools">
+      <button data-tool="pencil" class="tool active">✏️ Pencil</button>
+      <button data-tool="eraser" class="tool">🧽 Eraser</button>
+      <button data-tool="fill" class="tool">🪣 Fill</button>
+      <button data-tool="line" class="tool">📏 Line</button>
+      <button data-tool="rect" class="tool">▭ Rectangle</button>
+    </div>
+    <label class="chk"><input type="checkbox" id="mirrorX"> Mirror X</label>
+    <label class="chk"><input type="checkbox" id="mirrorY"> Mirror Y</label>
+    <h2>DESIGN</h2>
+    <input id="designName" type="text" value="Custom Design">
+    <div class="row"><button id="newDesign">New 40×24</button><button id="clearDesign">Clear</button></div>
+    <div class="row"><button id="undoBtn">↩ Undo</button><button id="redoBtn">↪ Redo</button></div>
+    <div class="row"><button id="outlineBtn">Outline</button><button id="swapBtn">Swap mat → current</button></div>
+    <div class="row"><button id="saveDesign">💾 Save design</button><button id="exportDesign">Export</button></div>
+    <div class="row"><button id="importDesign">Import</button><input id="importFile" type="file" accept=".json" hidden></div>
+    <h2>USE DESIGN AS</h2>
+    <div class="row"><button id="useAsProj">🚀 Projectile</button><button id="useAsTarg">🎯 Target</button></div>
+    <p class="hint">Designs are portable JSON (grid + material per cell) and are stored in this browser.</p>
+  </aside>
+  <section class="stage">
+    <canvas id="editorCanvas" width="800" height="480"></canvas>
+    <div id="editorStat" class="info"></div>
+  </section>
+  <aside class="panel right">
+    <h2>MATERIAL PALETTE</h2>
+    <input id="matSearch" type="search" placeholder="Search 84 materials…">
+    <div id="palette" class="palette"></div>
+    <div id="paletteInfo" class="info"></div>
+  </aside>
+</main>
+
+<footer>
+  Nothing here is a canned animation — deformation, fracture, spalling, melting &amp; detonation emerge from bonded particles carrying real material properties.
+  <span id="footStats"></span> · See README.md for architecture &amp; physics model · Assets: procedural / CC0 (CREDITS.txt)
+</footer>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

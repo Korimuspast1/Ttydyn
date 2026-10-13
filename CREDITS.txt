@@ -1,0 +1,14 @@
+TTYDYN — Credits
+================
+All visual content in this build is procedural (particles coloured per material,
+programmatically generated pixel GUI). No third-party sprites are bundled.
+
+Recommended free asset sources for future art passes (CC0 / permissive):
+- Kenney.nl — Kenney UI Pack / Pixel UI Pack (CC0 1.0) — https://kenney.nl
+- OpenGameArt.org — CC0 pixel GUI packs — https://opengameart.org
+- itch.io free pixel-art GUI packs (check per-pack licence before shipping)
+
+Code: original, written for this project. Material property values are
+engineering approximations for gameplay, not certified ballistic data.
+Vehicle cutaways are generic "‑like" layouts, not reproductions of any
+classified armour arrangement.
