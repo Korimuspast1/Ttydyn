@@ -25,13 +25,11 @@ window.addEventListener('keydown', e => {
   if (KEYMAP[e.code]) { keys.add(KEYMAP[e.code]); e.preventDefault(); }
   if (e.code === 'KeyR') resetCar();
   if (e.code === 'KeyP') togglePause();
-  if (e.code === 'KeyM') toggleSound();
-  initAudio();
 });
 window.addEventListener('keyup', e => { if (KEYMAP[e.code]) keys.delete(KEYMAP[e.code]); });
 document.querySelectorAll('.tbtn').forEach(b => {
   const k = b.dataset.k;
-  const on = e => { e.preventDefault(); touch.add(k); initAudio(); hideBanner(); };
+  const on = e => { e.preventDefault(); touch.add(k); hideBanner(); };
   const off = e => { e.preventDefault(); touch.delete(k); };
   b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off);
   b.addEventListener('pointerleave', off); b.addEventListener('pointercancel', off);
@@ -42,21 +40,27 @@ function hideBanner() {
   if (!started) { started = true; document.getElementById('banner').style.opacity = '0'; }
 }
 
-/* ---------------- местность ---------------- */
-function groundY(x) {
-  if (x < 500) { // ровный старт
-    const t = Math.min(1, Math.max(0, (x - 200) / 300));
-    const s = t * t * (3 - 2 * t);
-    return 320 * (1 - s) + hills(x) * s;
-  }
-  return hills(x);
+/* ---------------- местность: бесконечный случайный мир ----------------
+   Высота = сумма value-noise октав от целочисленного хэша с сидом мира.
+   Функция чистая и бесконечна в обе стороны, ландшафт не повторяется. */
+const WORLD_SEED = (Math.random() * 1e9) | 0;
+function hashN(i, oct) {
+  let n = (i * 374761393 + WORLD_SEED * 668265263 + oct * 974634211) >>> 0;
+  n = ((n ^ (n >>> 13)) * 1274126177) >>> 0;
+  return (((n ^ (n >>> 16)) >>> 0) / 4294967295) * 2 - 1;
 }
-function hills(x) {
-  return 320
-    + Math.sin(x * 0.0016) * 70
-    + Math.sin(x * 0.0043 + 1.7) * 38
-    + Math.sin(x * 0.0007 + 4.2) * 95
-    + Math.sin(x * 0.011 + 0.5) * 9;
+function vnoise(x, spacing, oct) {
+  const i = Math.floor(x / spacing), f = x / spacing - i;
+  const u = f * f * (3 - 2 * f);
+  return hashN(i, oct) * (1 - u) + hashN(i + 1, oct) * u;
+}
+function groundY(x) {
+  const y = 320 + vnoise(x, 950, 1) * 95 + vnoise(x, 390, 2) * 44 + vnoise(x, 150, 3) * 11;
+  if (x < 650) {
+    const t = Math.min(1, Math.max(0, (x - 250) / 400)), u = t * t * (3 - 2 * t);
+    return 320 * (1 - u) + y * u;
+  }
+  return y;
 }
 function groundNormal(x) {
   const s = (groundY(x + 6) - groundY(x - 6)) / 12;
@@ -160,7 +164,7 @@ function showMsg(t) { document.getElementById('msg').textContent = t; msgTimer =
 function onBeamBreak(bm) {
   const c = carCenter();
   for (let i = 0; i < 5; i++) spawnEffect(bm.a.x, bm.a.y, 'spark');
-  playCrash(0.25); camShake = Math.max(camShake, 3);
+  camShake = Math.max(camShake, 3);
   if (car && wheelsAttached() < 2 && !car.wheels.some(w => w.lostMsgShown && false)) { /* handled in loop */ }
   if (c) msgTimer = msgTimer; // noop
 }
@@ -183,7 +187,7 @@ function spawnSegment(s) {
   const obj = { parts: [], beams: [], kind: 'empty' };
   objects.set(s, obj);
   if (s < 1) return; // у старта чисто
-  const r = rng(s + 777);
+  const r = rng(s + 777 + (WORLD_SEED % 100000));
   if (r() < 0.30) return;
   const bx = s * SEG + 280 + r() * 380, gy = groundY(bx);
   if (r() < 0.22) { // бочка
@@ -219,45 +223,12 @@ function spawnEffect(x, y, type, tx, ty) {
   effects.push({ x, y, vx: Math.cos(a) * sp + (tx || 0), vy: Math.sin(a) * sp - (type === 'smoke' || type === 'flame' ? 1 : 0) + (ty || 0), ...conf, t: 0, type });
 }
 
-/* ---------------- звук (WebAudio) ---------------- */
-let AC = null, engOsc = null, engOsc2 = null, engGain = null, soundOn = true;
-function initAudio() {
-  if (AC || !soundOn) return;
-  try {
-    AC = new (window.AudioContext || window.webkitAudioContext)();
-    engGain = AC.createGain(); engGain.gain.value = 0.0;
-    const f = AC.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 500;
-    engOsc = AC.createOscillator(); engOsc.type = 'sawtooth';
-    engOsc2 = AC.createOscillator(); engOsc2.type = 'square';
-    const g2 = AC.createGain(); g2.gain.value = 0.4;
-    engOsc.connect(f); engOsc2.connect(g2); g2.connect(f); f.connect(engGain); engGain.connect(AC.destination);
-    engOsc.start(); engOsc2.start();
-  } catch (e) { AC = null; }
-}
-function playCrash(vol) {
-  if (!AC || !soundOn) return;
-  const len = AC.sampleRate * 0.18, buf = AC.createBuffer(1, len, AC.sampleRate), d = buf.getChannelData(0);
-  for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
-  const src = AC.createBufferSource(); src.buffer = buf;
-  const g = AC.createGain(); g.gain.value = Math.min(0.5, vol);
-  const f = AC.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 700;
-  src.connect(f); f.connect(g); g.connect(AC.destination); src.start();
-}
-let crashCooldown = 0;
-function toggleSound() {
-  soundOn = !soundOn;
-  document.getElementById('btnSound').textContent = soundOn ? '🔊' : '🔇';
-  if (!soundOn && engGain) engGain.gain.value = 0;
-  if (soundOn) initAudio();
-}
-
 /* ---------------- физика ---------------- */
 const cam = { x: 0, y: 0, zoom: 1 };
-let paused = false, wheelWasAttached = 2;
+let paused = false, wheelWasAttached = 2, crashCooldown = 0; // кулдаун эффектов жёстких ударов (не звук)
 function togglePause() { paused = !paused; document.getElementById('paused').classList.toggle('on', paused); }
 document.getElementById('btnPause').onclick = togglePause;
-document.getElementById('btnReset').onclick = () => { initAudio(); resetCar(); };
-document.getElementById('btnSound').onclick = toggleSound;
+document.getElementById('btnReset').onclick = () => resetCar();
 
 function stepPhysics() {
   const gas = input('gas'), brake = input('brake'), nitro = input('nitro');
@@ -351,7 +322,7 @@ function collideTerrain(p) {
     const isStruct = car && car.nodes.includes(p);
     if (vn < 0) {
       if (isStruct && vn < -11 && crashCooldown <= 0) { // жёсткий удар кузовом
-        playCrash(Math.min(0.5, -vn * 0.03)); camShake = Math.max(camShake, Math.min(9, -vn * 0.55));
+        camShake = Math.max(camShake, Math.min(9, -vn * 0.55));
         for (let i = 0; i < 7; i++) spawnEffect(p.x, p.y, 'spark'); crashCooldown = 14;
         if (vn < -19) showMsg('💥 Жёсткий удар!');
       } else if (isStruct && vn < -7) {
@@ -386,6 +357,7 @@ function collidePairs() {
 
 /* ---------------- отрисовка ---------------- */
 function draw() {
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0); // иначе на retina сцена ужимается в угол
   const c = car.center;
   const speed = Math.abs(car.vx);
   const baseZoom = Math.min(1.12, Math.max(0.6, W / 1150));
@@ -396,22 +368,13 @@ function draw() {
   if (camShake > 0.2) camShake *= 0.88; else camShake = 0;
   const shX = (Math.random() - 0.5) * camShake, shY = (Math.random() - 0.5) * camShake;
 
-  // небо
-  const sky = ctx.createLinearGradient(0, 0, 0, H);
-  sky.addColorStop(0, '#4aa3e8'); sky.addColorStop(0.55, '#8ec9f2'); sky.addColorStop(1, '#d8f0ff');
-  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
-  // солнце и облака
-  ctx.fillStyle = '#fff3a0'; ctx.beginPath(); ctx.arc(W - 120, 84, 36, 0, 7); ctx.fill();
-  ctx.fillStyle = 'rgba(255,243,160,.35)'; ctx.beginPath(); ctx.arc(W - 120, 84, 56, 0, 7); ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,.9)';
-  for (let i = 0; i < 7; i++) {
-    const cxp = ((i * 340 - cam.x * 0.12) % (W + 260) + W + 260) % (W + 260) - 130, cyp = 46 + (i * 53) % 130;
-    [[0, 0, 30], [26, 4, 22], [-27, 5, 20], [4, -11, 20]].forEach(([a, b, r]) => { ctx.beginPath(); ctx.arc(cxp + a, cyp + b, r, 0, 7); ctx.fill(); });
+  // минималистичное небо: плоский цвет + пара облачков
+  ctx.fillStyle = '#cfe8ef'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(255,255,255,.75)';
+  for (let i = 0; i < 5; i++) {
+    const cxp = ((i * 420 - cam.x * 0.1) % (W + 240) + W + 240) % (W + 240) - 120, cyp = 42 + (i * 47) % 110;
+    ctx.beginPath(); ctx.ellipse(cxp, cyp, 34, 11, 0, 0, 7); ctx.fill();
   }
-  // далёкие горы (параллакс)
-  mountainLayer(0.22, H * 0.70, 90, '#7fb2dd', 0.9);
-  mountainLayer(0.45, H * 0.78, 60, '#5d9c6e', 2.1);
-
   ctx.save();
   ctx.translate(W / 2, H * 0.56); ctx.scale(cam.zoom, cam.zoom); ctx.translate(-cam.x + shX, -cam.y + shY);
 
@@ -427,30 +390,19 @@ function draw() {
   }
   ctx.restore();
 }
-function mountainLayer(par, base, amp, color, seed) {
-  ctx.fillStyle = color; ctx.beginPath(); ctx.moveTo(-20, H);
-  for (let sx = -20; sx <= W + 20; sx += 26) {
-    const wx = sx + cam.x * par;
-    ctx.lineTo(sx, base - (Math.sin(wx * 0.004 + seed) * 0.5 + Math.sin(wx * 0.0013 + seed * 2) * 0.5 + 0.6) * amp);
-  }
-  ctx.lineTo(W + 20, H); ctx.closePath(); ctx.fill();
-}
 function drawTerrain() {
   const x0 = cam.x - W / 2 / cam.zoom - 80, x1 = cam.x + W / 2 / cam.zoom + 80;
   const bottom = cam.y + H / cam.zoom;
   ctx.beginPath(); ctx.moveTo(x0, groundY(x0));
   for (let x = x0; x <= x1; x += 10) ctx.lineTo(x, groundY(x));
   ctx.lineTo(x1, bottom); ctx.lineTo(x0, bottom); ctx.closePath();
-  ctx.fillStyle = '#6e4a2c'; ctx.fill();
+  ctx.fillStyle = '#97795a'; ctx.fill();
   // трава сверху
   ctx.beginPath();
   for (let x = x0; x <= x1; x += 10) { const y = groundY(x); x === x0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
-  ctx.strokeStyle = '#3f9e4d'; ctx.lineWidth = 13; ctx.lineJoin = 'round'; ctx.stroke();
-  ctx.beginPath();
-  for (let x = x0; x <= x1; x += 10) { const y = groundY(x); x === x0 ? ctx.moveTo(x, y - 5) : ctx.lineTo(x, y - 5); }
-  ctx.strokeStyle = '#55c267'; ctx.lineWidth = 5; ctx.stroke();
+  ctx.strokeStyle = '#57a773'; ctx.lineWidth = 7; ctx.lineJoin = 'round'; ctx.stroke();
   // разметка дистанции каждые 50 м (2500 px)
-  ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.font = 'bold 17px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
   for (let m = 0; m * 2500 < x1; m++) {
     const x = m * 2500; if (x < x0 || m === 0) continue;
     ctx.fillRect(x - 2, groundY(x) - 44, 4, 44);
@@ -528,13 +480,9 @@ function updateHUD() {
   const d = Math.max(0, Math.floor(car.center.x / 50));
   if (d > maxDist) { maxDist = d; try { localStorage.setItem('sbd_best', maxDist); } catch (e) {} }
   el('dist').textContent = d; el('best').textContent = maxDist;
-  el('wheelState').textContent = '🛞 колёса: ' + wheelsAttached() + '/2';
+  el('wheelState').textContent = '🛞 ' + wheelsAttached() + '/2';
+  el('seed').textContent = 'мир #' + (WORLD_SEED % 10000);
   if (msgTimer > 0) { msgTimer--; if (msgTimer === 0) el('msg').textContent = ''; }
-  if (AC && engGain && soundOn) {
-    const rpm = Math.abs(car.vx) * 0.55 + (input('gas') ? 0.55 : 0) + 0.3;
-    engOsc.frequency.value = 42 + rpm * 46; engOsc2.frequency.value = 21 + rpm * 23;
-    engGain.gain.value = 0.028 + Math.min(0.03, rpm * 0.012);
-  }
 }
 
 /* ---------------- цикл ---------------- */

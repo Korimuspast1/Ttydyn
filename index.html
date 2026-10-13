@@ -3,54 +3,35 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>SoftBody Drive 2D — машина с мягкой физикой</title>
+<title>SoftBody Drive 2D</title>
 <link rel="stylesheet" href="style.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚗</text></svg>">
 </head>
 <body>
 <canvas id="game"></canvas>
 
-<!-- HUD -->
+<!-- Компактный HUD -->
 <div id="hud">
-  <div class="panel" id="dash">
-    <div id="speed"><span id="speedVal">0</span><small>км/ч</small></div>
-    <div class="barWrap">
-      <div class="barLabel"><span>❤️ Состояние машины</span><span id="dmgVal">100%</span></div>
-      <div class="bar"><div id="dmgBar"></div></div>
-    </div>
-    <div id="stats">
-      <span>📏 <b id="dist">0</b> м</span>
-      <span>🏆 <b id="best">0</b> м</span>
-      <span id="wheelState">🛞 колёса: 2/2</span>
-    </div>
-    <div id="msg"></div>
-  </div>
+  <span id="speed"><b id="speedVal">0</b> км/ч</span>
+  <span class="bar"><i id="dmgBar"></i></span>
+  <span id="dmgVal">100%</span>
+  <span>📏 <b id="dist">0</b> м</span>
+  <span>🏆 <b id="best">0</b> м</span>
+  <span id="wheelState">🛞 2/2</span>
+  <span id="seed"></span>
+</div>
+<div id="msg"></div>
 
-  <div class="panel" id="help">
-    <h3>🎮 Управление</h3>
-    <ul>
-      <li><kbd>W</kbd>/<kbd>↑</kbd> — газ</li>
-      <li><kbd>S</kbd>/<kbd>↓</kbd> — тормоз / назад</li>
-      <li><kbd>A</kbd><kbd>D</kbd> / <kbd>←</kbd><kbd>→</kbd> — наклон в воздухе</li>
-      <li><kbd>Shift</kbd> — нитро 🔥</li>
-      <li><kbd>Space</kbd> — ручник</li>
-      <li><kbd>R</kbd> — починить / заново</li>
-      <li><kbd>P</kbd> — пауза &nbsp; <kbd>M</kbd> — звук</li>
-    </ul>
-    <p class="tip">💡 Кузов мнётся, пружины рвутся, колёса отлетают — как в BeamNG!</p>
-  </div>
-
-  <div id="topBtns">
-    <button id="btnSound" title="Звук (M)">🔊</button>
-    <button id="btnPause" title="Пауза (P)">⏸️</button>
-    <button id="btnReset" title="Починить (R)">🔧</button>
-  </div>
+<div id="topBtns">
+  <button id="btnPause" title="Пауза (P)">⏸</button>
+  <button id="btnReset" title="Починить (R)">🔧</button>
 </div>
 
-<div id="banner"><h1>🚗 SoftBody Drive 2D</h1><p>Жми <b>W</b> или <b>↑</b> — и поехали! Старайся не разбить машину… хотя это самое весёлое 😄</p></div>
-<div id="paused">⏸️ ПАУЗА<br><small>нажми P, чтобы продолжить</small></div>
+<div id="hint"><kbd>W</kbd> газ · <kbd>S</kbd> тормоз · <kbd>A</kbd>/<kbd>D</kbd> наклон · <kbd>Shift</kbd> нитро · <kbd>R</kbd> ремонт</div>
+<div id="banner">🚗 жми <b>W</b> — поехали!</div>
+<div id="paused">⏸ Пауза<br><small>P — продолжить</small></div>
 
-<!-- Touch controls -->
+<!-- Сенсорное управление -->
 <div id="touch">
   <div class="tgroup">
     <button class="tbtn" data-k="tiltL">⟲</button>
