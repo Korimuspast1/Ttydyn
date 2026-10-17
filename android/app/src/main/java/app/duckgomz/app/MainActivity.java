@@ -275,7 +275,7 @@ public class MainActivity extends AppCompatActivity {
         TextInputEditText finalRepeatInput = repeatInput;
         MaterialButton submit = new MaterialButton(this);
         submit.setText(registerMode ? "Создать аккаунт  →" : "Войти  →");
-        submit.setTextAllCaps(false);
+        submit.setAllCaps(false);
         submit.setTextSize(14);
         submit.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         submit.setTextColor(Color.WHITE);
@@ -948,7 +948,7 @@ public class MainActivity extends AppCompatActivity {
 
         MaterialButton done = new MaterialButton(this);
         done.setText("Вернуться в чат");
-        done.setTextAllCaps(false);
+        done.setAllCaps(false);
         done.setTextSize(14);
         done.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         done.setTextColor(Color.WHITE);
