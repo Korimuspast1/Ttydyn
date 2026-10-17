@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Пульт СГУ — реальные сигналы и записи сирен полиции</title>
+<meta name="description" content="Реальные записи сирен (WAIL, YELP-крякалка, HI-LO, HORN) плюс генератор сигналов СГУ: кнопка — и звук играет. Российские спецсигналы по ГОСТ Р 50574 / ЕЭК ООН №65.">
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='18' fill='%230b0f16'/><rect x='10' y='14' width='36' height='20' rx='6' fill='%231d6dff'/><rect x='54' y='14' width='36' height='20' rx='6' fill='%23ff2b3d'/><rect x='10' y='66' width='80' height='20' rx='6' fill='%23202837'/></svg>">
+</head>
+<body>
+
+<!-- ─────────── балка маячков ─────────── -->
+<div class="bar" id="lightbar" aria-hidden="true">
+  <span class="bar__lamp blue"></span>
+  <span class="bar__lamp red"></span>
+  <span class="bar__lamp blue"></span>
+  <span class="bar__lamp white"></span>
+  <span class="bar__lamp blue"></span>
+  <span class="bar__lamp red"></span>
+  <span class="bar__lamp blue"></span>
+</div>
+
+<header class="top">
+  <div class="top__left">
+    <h1>ПУЛЬТ&nbsp;СГУ</h1>
+    <p>Спецсигналы полиции: реальные записи сирен + генератор СГУ · ГОСТ Р 50574 / Правила ЕЭК ООН №65</p>
+  </div>
+  <div class="top__right">
+    <canvas id="meter" class="meter" height="46"></canvas>
+    <label class="vol">
+      <span>ГРОМКОСТЬ</span>
+      <input id="vol" type="range" min="0" max="1" step="0.01" value="0.85">
+    </label>
+    <button id="lampBtn" class="mini" type="button" title="Маячки (L)">МАЯЧКИ</button>
+    <button id="stopBtn" class="stop" type="button" title="Всё выключить (Esc)">СТОП</button>
+  </div>
+</header>
+
+<main>
+
+  <!-- ─────────── реальные записи ─────────── -->
+  <section class="panel panel--hot">
+    <div class="panel__head">
+      <h2>РЕАЛЬНЫЕ ЗАПИСИ СИРЕН</h2>
+      <div class="status" id="status">готов</div>
+    </div>
+    <p class="hint">
+      Здесь <b>настоящие сэмплы</b>, записанные с работающих сиренных блоков — без синтеза. Жми и слушай по кругу;
+      нажми ещё раз — выключится. Записи переключаются друг за другом (как переключатель режимов на пульте).
+      Ползунок «ТОН» внизу подстраивает высоту: у разных изделий (и у российских СГУ «Элина», «Мираж», «Смерч», «СГУ-100»,
+      которые делают по тем же Правилам ЕЭК ООН №65) тон и темп отличаются.
+    </p>
+    <div class="real" id="realList"></div>
+    <div class="sliders sliders--inline">
+      <label class="range">
+        <span>ТОН реальных записей (высота и темп) <b id="realToneVal">100%</b></span>
+        <input id="realTone" type="range" min="0.8" max="1.25" step="0.01" value="1">
+      </label>
+    </div>
+  </section>
+
+  <!-- ─────────── режимы сирены (генератор) ─────────── -->
+  <section class="panel">
+    <div class="panel__head">
+      <h2>ГЕНЕРАТОР СИГНАЛОВ СГУ <em class="muted">— синтез в браузере, бесконечно и без файлов</em></h2>
+    </div>
+    <p class="hint">
+      Нажми кнопку — сигнал включится и будет звучать, пока не нажмёшь её снова. Клавиши <b>1</b>…<b>6</b>,
+      <b>пробел</b> — пневмогудок, <b>M</b> — микрофон, <b>Esc</b> — стоп.
+    </p>
+    <div class="modes" id="modes"></div>
+
+    <h3 class="sub">КРАТКОВРЕМЕННЫЕ СИГНАЛЫ <em>— держать кнопку</em></h3>
+    <div class="modes modes--hold" id="momentary"></div>
+
+    <h3 class="sub">СИГНАЛЫ ГРАЖДАНСКОЙ ОБОРОНЫ <em>— не автомобильные СГУ, добавлены для полноты картины</em></h3>
+    <div class="modes modes--go" id="goModes"></div>
+  </section>
+
+  <!-- ─────────── рупор ─────────── -->
+  <section class="panel">
+    <div class="panel__head"><h2>РУПОР · РЕЧЕВЫЕ ОБЪЯВЛЕНИЯ</h2></div>
+    <p class="hint">
+      Выбери фразу — она проиграется через «рупор». Удерживай <b>МИКРОФОН</b> (или клавишу <b>M</b>):
+      сирена приглушается, звучит тангента и объявление — как в настоящей машине.
+    </p>
+    <div class="phrases" id="phrases"></div>
+    <div class="row">
+      <label class="field">
+        <span>Что играет микрофон</span>
+        <select id="micTarget"></select>
+      </label>
+      <label class="check">
+        <input id="hornMode" type="checkbox" checked>
+        <span>Пропускать речь через рупор (полосовой фильтр + перегруз)</span>
+      </label>
+    </div>
+  </section>
+
+  <!-- ─────────── поиск настоящих записей ─────────── -->
+  <section class="panel">
+    <div class="panel__head"><h2>НАЙТИ ЕЩЁ ЗАПИСИ В ИНТЕРНЕТЕ</h2></div>
+    <p class="hint">
+      Свободная медиатека Wikimedia Commons: поиск идёт прямо из твоего браузера, найденные файлы можно
+      послушать через рупор или сохранить в «Свои записи» (тогда они останутся в пульте навсегда).
+      Так же ищутся записи российских машин — попробуй запросы «police siren Russia», «ГИБДД», «СГУ».
+    </p>
+    <div class="search">
+      <input id="q" type="text" placeholder="например: police siren Russia" autocomplete="off">
+      <button id="searchBtn" class="mini mini--go" type="button">ИСКАТЬ</button>
+    </div>
+    <div class="hints" id="hints"></div>
+    <div class="webbox" id="webResults"></div>
+  </section>
+
+  <!-- ─────────── свои записи ─────────── -->
+  <section class="panel">
+    <div class="panel__head"><h2>СВОИ ЗАПИСИ</h2></div>
+    <p class="hint">
+      Есть настоящая запись российской машины (Элина, Мираж, Смерч, СГУ-100) или ролик с телефона?
+      Перетащи сюда <b>mp3</b>, <b>wav</b> или <b>ogg</b> — файл сохранится в браузере и станет кнопкой.
+    </p>
+    <div class="drop" id="drop">
+      <span>Перетащи аудиофайлы сюда</span>
+      <button id="pick" class="mini" type="button">выбрать файлы</button>
+      <input id="file" type="file" accept="audio/*" multiple hidden>
+    </div>
+    <div class="ownlist" id="ownlist"></div>
+  </section>
+
+  <!-- ─────────── настройка генератора ─────────── -->
+  <section class="panel">
+    <div class="panel__head"><h2>НАСТРОЙКА ГЕНЕРАТОРА</h2></div>
+    <p class="hint">
+      Крути ползунки, чтобы синтез совпал с записью конкретной машины: у «Элины», «Миража» и старых
+      электромеханических сирен тон и темп развёртки заметно разные.
+    </p>
+    <div class="sliders">
+      <label class="range">
+        <span>Нижний тон генератора <b id="pitchLowVal">600 Гц</b></span>
+        <input id="pitchLow" type="range" min="400" max="800" step="10" value="600">
+      </label>
+      <label class="range">
+        <span>Верхний тон генератора <b id="pitchHighVal">1500 Гц</b></span>
+        <input id="pitchHigh" type="range" min="900" max="2200" step="10" value="1500">
+      </label>
+      <label class="range">
+        <span>Темп развёртки <b id="rateVal">1.00×</b></span>
+        <input id="rate" type="range" min="0.5" max="2" step="0.05" value="1">
+      </label>
+      <label class="check">
+        <input id="layering" type="checkbox">
+        <span>Разрешить наложение сигналов (как WAIL + YELP в режиме «погоня»)</span>
+      </label>
+    </div>
+  </section>
+
+  <!-- ─────────── справка ─────────── -->
+  <section class="panel">
+    <div class="panel__head"><h2>СПРАВКА: ЧТО ЗА СИГНАЛ И ЗАЧЕМ</h2></div>
+    <div class="cards" id="cards"></div>
+    <p class="hint">
+      Генератор синтезирует сигналы в реальном времени по мотивам типовых режимов электронных СГУ:
+      WAIL, YELP, HI-LO, PULSAR, HORN/AIR HORN и речевой режим. Реальные записи — это сэмплы,
+      снятые с работающих блоков; их источники и лицензии описаны в файле
+      <code>sgu/audio/real/CREDITS.md</code>.
+    </p>
+    <h3 class="sub">Где послушать оригиналы и почитать характеристики</h3>
+    <ul class="links" id="links"></ul>
+  </section>
+
+</main>
+
+<footer>
+  <p>
+    Всё работает в браузере, без сервера: звук считается на месте (Web Audio API), реальные записи лежат
+    в папке <code>sgu/audio/real/</code>, свои файлы хранятся у тебя в браузере (IndexedDB).
+    Напоминание: спецсигналы — только для оперативных служб; незаконная установка СГУ на обычный автомобиль
+    в России запрещена (ГОСТ Р 50574, КоАП 12.4/12.5).
+  </p>
+</footer>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
