@@ -1,38 +1,66 @@
-# Duckgomz для Android
+# Duckgomz for Android
 
-Нативное Android-приложение на Java. После регистрации открывается список с одним диалогом — официальным локальным ботом **Duckgomz** с синей галочкой. Это прототип без серверной доставки переписки.
+Duckgomz is a native Android messaging app written in Java. It uses a dark, Telegram-inspired conversation layout without Telegram logos or branding. Users sign in with a username and password, find other accounts by username, and create private one-to-one chats or private groups. There are no channels. A clearly labelled Duckgomz demo-bot conversation remains local to the device.
 
-## Возможности
+## Features
 
-- регистрация и вход по имени пользователя и паролю — без номера телефона;
-- имя пользователя проверяется по адаптированным правилам Telegram: 4–32 символа, латинские буквы/цифры/`_`, не начинается с цифры или `_`, не заканчивается на `_`;
-- ровно один чат Duckgomz: приветствие, локальные текстовые сообщения, прикрепление файла и просмотр профиля бота;
-- собственный фирменный знак Duckgomz и собственные SVG-исходники с Android VectorDrawable-иконками;
-- локальная история чата шифруется AES-GCM ключом, созданным и хранимым Android Keystore. В зашифрованную историю входят тексты сообщений и метаданные вложений (имя, URI, MIME-тип и размер).
+- Username and password registration/sign-in; no phone number or user-facing email address.
+- Usernames are 4–32 characters, use Latin letters, digits, and `_`, start with a letter, and end with a letter or digit. The reserved username `duckgomz` is used by the local demo bot.
+- Real-time chat lists and message updates between signed-in accounts using Firebase Cloud Firestore.
+- Private groups with up to 20 members; members can add other users by username.
+- File attachments stored in Firebase Storage, limited to 20 MB per file.
+- Four main tabs: Chats, Contacts, Settings, and Profile. Channels are intentionally not included.
+- Original Duckgomz geometric-duck branding, including the selected launcher icon in `artifacts/Duckgomz-icon.png` and original vector assets in `android/app/src/main/assets/svg/`.
+- A device-local Duckgomz demo bot. Its messages and attachment metadata are stored in an AES-GCM encrypted local history using an Android Keystore key.
+- A best-effort encrypted local cache for recent cloud messages. Cloud messages and attachments are **not end-to-end encrypted**.
 
-Атрибуция адаптированных правил имени пользователя и условия лицензии — в `THIRD_PARTY_NOTICES.md` и `LICENSE`.
+The adapted username validation and its license attribution are documented in `THIRD_PARTY_NOTICES.md` and `LICENSE`.
 
-## Firebase Auth
+## Firebase setup
 
-В репозиторий добавлен переданный `google-services.json` для пакета `app.duckgomz.app`. В Firebase Console необходимо включить **Authentication → Sign-in method → Email/Password**.
+The Android app is configured for Firebase project `ppstore-24ea8` and package `app.duckgomz.app`; the project-provided `android/app/google-services.json` is required for the build.
 
-Firebase Auth принимает email и пароль, поэтому имя пользователя преобразуется внутри приложения в технический адрес вида `username@duckgomz.app`. Пользователь вводит только имя и пароль; телефон и email в интерфейсе не запрашиваются. Обмен с Firebase Auth выполняется через HTTPS/TLS.
+Before real accounts can chat:
 
-## Сборка APK
+1. In Firebase Console, enable **Authentication → Sign-in method → Email/Password**.
+2. Create a **Cloud Firestore** database in Native mode.
+3. Create the project's **Cloud Storage** bucket. The bucket name is read from `google-services.json`.
+4. Install Firebase CLI, select the same Firebase project, and publish the rules shipped in this repository:
 
-Требуются JDK 17 и Android SDK 36.
+   ```bash
+   npm install -g firebase-tools
+   firebase login
+   firebase use ppstore-24ea8
+   firebase deploy --only firestore:rules,firestore:indexes,storage
+   ```
+
+   If your Firebase CLI version uses a different project selection flow, pass `--project ppstore-24ea8` to the deploy command.
+
+The repository includes `firestore.rules`, `storage.rules`, `firestore.indexes.json`, and `firebase.json`. The rules allow authenticated users to look up a username by its exact document ID, restrict chat reads to chat members, and restrict attachment reads to members of the corresponding chat. Do not replace them with public/test-mode rules. Review and deploy rule changes before publishing a production build.
+
+### Data model
+
+- `usernames/{lowercaseUsername}` maps an available username to its Firebase Auth UID.
+- `users/{uid}` stores the account's public username and creation timestamp.
+- `chats/{chatId}` stores chat type, title, member UIDs, member usernames, and a short last-message preview.
+- `chats/{chatId}/messages/{messageId}` stores message text or attachment metadata.
+- `chatAttachments/{chatId}/{messageId}` stores uploaded file contents in Firebase Storage.
+
+Firebase Authentication uses a technical address of the form `username@duckgomz.app`, because Firebase's Email/Password provider requires an email-shaped identifier. The app derives it internally; users enter only a username and password. Firebase Authentication and cloud services use TLS in transit. Cloud data is stored by Firebase and this app does **not** implement end-to-end encryption. The local AES-GCM cache uses a device Keystore key and is separate from Firebase's server-side data.
+
+## Build
+
+Use JDK 17 and Android SDK 36:
 
 ```bash
 cd android
 ./gradlew assembleDebug
 ```
 
-APK будет создан здесь:
+The debug APK is written to:
 
 ```text
 android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-## Ограничения и хранение данных
-
-Сообщения, ответы бота и прикрепления демонстрационные и остаются на устройстве — серверной доставки сообщений или файлов нет. Прикреплённый файл открывается по URI, выданному системным выборщиком; приложение шифрует URI и остальные метаданные в своей истории, но не копирует и не шифрует исходное содержимое файла. Локальное AES-GCM-шифрование не является сквозным шифрованием (E2EE). Удаление данных приложения или ключа Android Keystore может сделать локальную историю недоступной.
+The GitHub Actions workflow also builds and publishes the APK artifact for the active branch. A device/emulator test and Firebase Console configuration are still necessary before treating the app as production-ready.

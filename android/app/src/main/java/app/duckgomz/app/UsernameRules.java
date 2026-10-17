@@ -11,29 +11,30 @@ public final class UsernameRules {
     private UsernameRules() {}
 
     public static String validate(String input) {
-        if (input == null) return "Укажи имя пользователя.";
+        if (input == null) return "Enter a username.";
         String username = input.trim();
         if (username.startsWith("@")) username = username.substring(1);
-        if (username.isEmpty()) return "Укажи имя пользователя.";
+        if (username.isEmpty()) return "Enter a username.";
         if (username.startsWith("_") || username.endsWith("_")) {
-            return "Имя не может начинаться или заканчиваться символом _.";
+            return "A username cannot start or end with an underscore.";
         }
 
         for (int i = 0; i < username.length(); i++) {
             char ch = username.charAt(i);
             if (i == 0 && ch >= '0' && ch <= '9') {
-                return "Имя пользователя не может начинаться с цифры.";
+                return "A username cannot start with a number.";
             }
             boolean digit = ch >= '0' && ch <= '9';
             boolean lowercase = ch >= 'a' && ch <= 'z';
             boolean uppercase = ch >= 'A' && ch <= 'Z';
             if (!(digit || lowercase || uppercase || ch == '_')) {
-                return "Разрешены только латинские буквы, цифры и _.";
+                return "Use only Latin letters, numbers, and underscores.";
             }
         }
 
-        if (username.length() < 4) return "Минимальная длина имени — 4 символа.";
-        if (username.length() > 32) return "Максимальная длина имени — 32 символа.";
+        if (username.length() < 4) return "A username must be at least 4 characters.";
+        if (username.length() > 32) return "A username can be at most 32 characters.";
+        if (username.equalsIgnoreCase("duckgomz")) return "This username is reserved for the Duckgomz demo bot.";
         return null;
     }
 

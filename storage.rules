@@ -1,0 +1,22 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isChatMember(chatId) {
+      let chatPath = /databases/(default)/documents/chats/$(chatId);
+      return request.auth != null
+        && firestore.exists(chatPath)
+        && request.auth.uid in firestore.get(chatPath).data.members;
+    }
+
+    match /chatAttachments/{chatId}/{messageId} {
+      allow read: if isChatMember(chatId);
+      allow create: if isChatMember(chatId)
+        && request.resource.size <= 20 * 1024 * 1024
+        && request.resource.contentType != null
+        && request.resource.metadata.ownerUid == request.auth.uid;
+      allow update: if false;
+      allow delete: if isChatMember(chatId)
+        && resource.metadata.ownerUid == request.auth.uid;
+    }
+  }
+}
