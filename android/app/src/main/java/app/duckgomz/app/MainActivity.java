@@ -12,6 +12,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.OpenableColumns;
+import android.util.Base64;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
@@ -32,6 +33,10 @@ import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -46,8 +51,10 @@ import com.google.firebase.auth.FirebaseUser;
 
 import org.json.JSONArray;
 import org.json.JSONException;
-import org.json.JSONObject;
 
+import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -55,7 +62,6 @@ import java.util.UUID;
 
 public class MainActivity extends AppCompatActivity {
     private static final int BLUE = Color.rgb(66, 133, 244);
-    private static final int BLUE_DARK = Color.rgb(40, 105, 211);
     private static final int TEXT = Color.rgb(32, 41, 56);
     private static final int MUTED = Color.rgb(119, 131, 149);
     private static final int BG = Color.rgb(245, 248, 252);
@@ -78,6 +84,7 @@ public class MainActivity extends AppCompatActivity {
     private EditText composer;
     private TextView authErrorView;
     private boolean activityDestroyed;
+    private boolean storageAvailable = true;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -89,6 +96,7 @@ public class MainActivity extends AppCompatActivity {
         root = new FrameLayout(this);
         root.setBackgroundColor(BG);
         setContentView(root);
+        installSystemBarInsets();
 
         filePicker = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
             if (result.getResultCode() == RESULT_OK && result.getData() != null && result.getData().getData() != null) {
@@ -116,11 +124,22 @@ public class MainActivity extends AppCompatActivity {
 
     private void applySystemBars() {
         Window window = getWindow();
+        WindowCompat.setDecorFitsSystemWindows(window, false);
         window.setStatusBarColor(Color.rgb(247, 249, 252));
         window.setNavigationBarColor(Color.WHITE);
         window.getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
         );
+    }
+
+    private void installSystemBarInsets() {
+        ViewCompat.setOnApplyWindowInsetsListener(root, (view, windowInsets) -> {
+            Insets bars = windowInsets.getInsets(
+                    WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+            return windowInsets;
+        });
+        ViewCompat.requestApplyInsets(root);
     }
 
     private void showAuthScreen() {
@@ -309,7 +328,7 @@ public class MainActivity extends AppCompatActivity {
         noteTextParams.leftMargin = dp(8);
         noteRow.addView(noteText, noteTextParams);
 
-        TextView footer = text("Тестовая версия: аккаунт работает через Firebase, сообщения пока хранятся на этом устройстве.", 9, Color.rgb(153, 163, 175), false);
+        TextView footer = text("Вход через Firebase · локальная история зашифрована на устройстве", 9, Color.rgb(144, 155, 170), false);
         footer.setGravity(Gravity.CENTER);
         footer.setLineSpacing(dp(2), 1f);
         LinearLayout.LayoutParams footerParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -479,7 +498,7 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout heading = new LinearLayout(this);
         heading.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams headingParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        headingParams.topMargin = dp(42);
+        headingParams.topMargin = dp(30);
         page.addView(heading, headingParams);
         TextView eyebrow = text("ВАШИ ДИАЛОГИ", 9, Color.rgb(145, 157, 174), true);
         eyebrow.setLetterSpacing(.13f);
@@ -511,7 +530,7 @@ public class MainActivity extends AppCompatActivity {
         chatCard.setClickable(true);
         chatCard.setFocusable(true);
         LinearLayout.LayoutParams chatCardParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        chatCardParams.topMargin = dp(23);
+        chatCardParams.topMargin = dp(18);
         page.addView(chatCard, chatCardParams);
         LinearLayout chatRow = new LinearLayout(this);
         chatRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -552,30 +571,6 @@ public class MainActivity extends AppCompatActivity {
         right.addView(arrow, arrowParams);
         chatCard.setOnClickListener(view -> showConversation());
 
-        LinearLayout infoCard = new LinearLayout(this);
-        infoCard.setOrientation(LinearLayout.HORIZONTAL);
-        infoCard.setGravity(Gravity.CENTER_VERTICAL);
-        infoCard.setPadding(dp(13), dp(13), dp(13), dp(13));
-        infoCard.setBackground(rounded(Color.WHITE, Color.rgb(232, 237, 244), dp(15)));
-        LinearLayout.LayoutParams infoParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        infoParams.topMargin = dp(17);
-        page.addView(infoCard, infoParams);
-        TextView sparkle = text("✦", 15, Color.rgb(64, 129, 225), true);
-        sparkle.setGravity(Gravity.CENTER);
-        sparkle.setBackground(circle(Color.rgb(235, 243, 255), Color.TRANSPARENT, 0));
-        infoCard.addView(sparkle, new LinearLayout.LayoutParams(dp(34), dp(34)));
-        LinearLayout infoCopy = new LinearLayout(this);
-        infoCopy.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams infoCopyParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
-        infoCopyParams.leftMargin = dp(10);
-        infoCard.addView(infoCopy, infoCopyParams);
-        infoCopy.addView(text("Добро пожаловать", 11, Color.rgb(67, 82, 101), true));
-        TextView infoText = text("Нажми на чат, чтобы открыть приветствие и профиль бота.", 10, Color.rgb(139, 151, 168), false);
-        infoText.setLineSpacing(dp(2), 1f);
-        LinearLayout.LayoutParams infoTextParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        infoTextParams.topMargin = dp(4);
-        infoCopy.addView(infoText, infoTextParams);
-
         View spacer = new View(this);
         page.addView(spacer, new LinearLayout.LayoutParams(1, 0, 1));
         MaterialCardView accountCard = new MaterialCardView(this);
@@ -605,7 +600,7 @@ public class MainActivity extends AppCompatActivity {
         userNameParams.topMargin = dp(2);
         accountText.addView(userNameText, userNameParams);
         ImageButton logout = new ImageButton(this);
-        logout.setImageResource(android.R.drawable.ic_lock_power_off);
+        logout.setImageResource(R.drawable.ic_logout);
         logout.setColorFilter(Color.rgb(123, 137, 155));
         logout.setBackground(rippleRounded(Color.TRANSPARENT, dp(10)));
         logout.setContentDescription("Выйти из аккаунта");
@@ -634,7 +629,7 @@ public class MainActivity extends AppCompatActivity {
         toolbar.setBackgroundColor(Color.WHITE);
         screen.addView(toolbar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(68)));
         ImageButton back = new ImageButton(this);
-        back.setImageResource(android.R.drawable.ic_media_previous);
+        back.setImageResource(R.drawable.ic_arrow_back);
         back.setColorFilter(Color.rgb(82, 96, 115));
         back.setBackground(rippleRounded(Color.TRANSPARENT, dp(12)));
         back.setContentDescription("Назад к чатам");
@@ -663,7 +658,7 @@ public class MainActivity extends AppCompatActivity {
         titleBlock.addView(sub, subParams);
         titleBlock.setOnClickListener(view -> showBotProfile());
         ImageButton profileInfo = new ImageButton(this);
-        profileInfo.setImageResource(android.R.drawable.ic_menu_info_details);
+        profileInfo.setImageResource(R.drawable.ic_info);
         profileInfo.setColorFilter(Color.rgb(104, 119, 138));
         profileInfo.setBackground(rippleRounded(Color.TRANSPARENT, dp(12)));
         profileInfo.setContentDescription("Профиль Duckgomz");
@@ -709,7 +704,7 @@ public class MainActivity extends AppCompatActivity {
         composerRow.setGravity(Gravity.BOTTOM | Gravity.CENTER_VERTICAL);
         composerArea.addView(composerRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         ImageButton attach = new ImageButton(this);
-        attach.setImageResource(R.drawable.telegram_input_attach);
+        attach.setImageResource(R.drawable.ic_attach);
         attach.setColorFilter(Color.rgb(115, 131, 151));
         attach.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
         attach.setPadding(dp(12), dp(12), dp(12), dp(12));
@@ -742,7 +737,7 @@ public class MainActivity extends AppCompatActivity {
         });
 
         ImageButton send = new ImageButton(this);
-        send.setImageResource(R.drawable.telegram_msg_send);
+        send.setImageResource(R.drawable.ic_send);
         send.setColorFilter(Color.WHITE);
         send.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
         send.setPadding(dp(12), dp(12), dp(12), dp(12));
@@ -753,7 +748,10 @@ public class MainActivity extends AppCompatActivity {
         composerRow.addView(send, sendParams);
         send.setOnClickListener(view -> sendTextMessage());
 
-        TextView localHint = text("Тестовая переписка · сообщения хранятся на этом устройстве", 9, Color.rgb(157, 166, 178), false);
+        TextView localHint = text(storageAvailable
+                ? "Локальный чат · история зашифрована на устройстве"
+                : "Хранилище недоступно · данные не изменены",
+                9, storageAvailable ? Color.rgb(142, 153, 168) : Color.rgb(175, 78, 72), false);
         localHint.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams localHintParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         localHintParams.topMargin = dp(7);
@@ -764,25 +762,34 @@ public class MainActivity extends AppCompatActivity {
         if (composer == null) return;
         String text = composer.getText() == null ? "" : composer.getText().toString().trim();
         if (text.isEmpty()) return;
-        composer.setText("");
         ChatMessage outgoing = new ChatMessage(UUID.randomUUID().toString(), false, text, System.currentTimeMillis(), "", "", "", 0);
-        addMessage(outgoing);
+        if (!addMessage(outgoing)) return;
+        composer.setText("");
         scheduleLocalBotReply(false, "");
     }
 
     private void sendFileMessage(String fileName, String uri, String mimeType, long size) {
         ChatMessage outgoing = new ChatMessage(UUID.randomUUID().toString(), false, "", System.currentTimeMillis(), fileName, uri, mimeType, size);
-        addMessage(outgoing);
+        if (!addMessage(outgoing)) return;
         scheduleLocalBotReply(true, fileName);
     }
 
-    private void addMessage(ChatMessage message) {
+    private boolean addMessage(ChatMessage message) {
+        if (!storageAvailable) {
+            showStorageError();
+            return false;
+        }
         messages.add(message);
-        saveMessages();
+        if (!saveMessages()) {
+            messages.remove(messages.size() - 1);
+            showStorageError();
+            return false;
+        }
         if (messageAdapter != null) {
             messageAdapter.addMessage(message);
             if (messageList != null) messageList.post(() -> messageList.scrollToPosition(messageAdapter.getItemCount() - 1));
         }
+        return true;
     }
 
     private void scheduleLocalBotReply(boolean attachedFile, String fileName) {
@@ -797,6 +804,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void openFilePicker() {
+        if (!storageAvailable) {
+            showStorageError();
+            return;
+        }
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("*/*");
@@ -915,7 +926,7 @@ public class MainActivity extends AppCompatActivity {
         pillParams.topMargin = dp(12);
         content.addView(officialPill, pillParams);
 
-        TextView description = text("Официальный бот приложения Duckgomz. Здесь можно задать вопрос, получить помощь и отправить файл.", 13, Color.rgb(98, 111, 130), false);
+        TextView description = text("Демонстрационный бот Duckgomz. Сообщения и прикреплённые файлы пока остаются на этом устройстве.", 13, Color.rgb(98, 111, 130), false);
         description.setGravity(Gravity.CENTER);
         description.setLineSpacing(dp(3), 1f);
         LinearLayout.LayoutParams descriptionParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -975,74 +986,143 @@ public class MainActivity extends AppCompatActivity {
 
     private void loadMessages() {
         messages.clear();
-        String stored = preferences.getString(messageKey(), null);
-        if (stored != null) {
-            try {
-                JSONArray array = new JSONArray(stored);
-                for (int index = 0; index < array.length(); index++) {
-                    messages.add(ChatMessage.fromJson(array.getJSONObject(index)));
+        storageAvailable = true;
+        String storageKey;
+        try {
+            storageKey = messageKey();
+        } catch (RuntimeException exception) {
+            storageAvailable = false;
+            storageKey = null;
+        }
+
+        if (storageAvailable) {
+            String stored = preferences.getString(storageKey, null);
+            String legacyKey = legacyMessageKey();
+            if (stored != null) {
+                try {
+                    String plaintext = EncryptedStorage.decrypt(stored, storageKey);
+                    if (plaintext == null) throw new GeneralSecurityException("Unknown local history format");
+                    readMessages(plaintext);
+                    if (preferences.contains(legacyKey) && !preferences.edit().remove(legacyKey).commit()) {
+                        storageAvailable = false;
+                        messages.clear();
+                    }
+                } catch (Exception exception) {
+                    messages.clear();
+                    storageAvailable = false;
                 }
-            } catch (JSONException ignored) {
-                messages.clear();
+            } else {
+                String legacy = preferences.getString(legacyKey, null);
+                if (legacy != null) {
+                    try {
+                        readMessages(legacy);
+                        if (saveMessages()) {
+                            if (!preferences.edit().remove(legacyKey).commit()) {
+                                storageAvailable = false;
+                                messages.clear();
+                            }
+                        } else {
+                            messages.clear();
+                        }
+                    } catch (Exception exception) {
+                        messages.clear();
+                        storageAvailable = false;
+                    }
+                }
             }
         }
-        if (messages.isEmpty()) {
-            messages.add(new ChatMessage(
-                    "welcome-" + username,
-                    true,
-                    "Привет! 👋\n\nДобро пожаловать в Duckgomz. Я официальный бот. Напиши сообщение или отправь файл — поле ввода находится внизу чата. Нажми на имя вверху, чтобы посмотреть мой профиль.",
-                    System.currentTimeMillis(), "", "", "", 0
-            ));
+
+        if (messages.isEmpty() && storageAvailable) {
+            messages.add(welcomeMessage());
             saveMessages();
+        }
+        if (!storageAvailable) {
+            if (messages.isEmpty()) messages.add(welcomeMessage());
+            showStorageError();
         }
     }
 
-    private void saveMessages() {
+    private void readMessages(String serialized) throws JSONException {
+        JSONArray array = new JSONArray(serialized);
+        for (int index = 0; index < array.length(); index++) {
+            messages.add(ChatMessage.fromJson(array.getJSONObject(index)));
+        }
+    }
+
+    private ChatMessage welcomeMessage() {
+        return new ChatMessage(
+                "welcome-" + username,
+                true,
+                "Привет! 👋\n\nДобро пожаловать в Duckgomz. Я демонстрационный бот. Напиши сообщение или прикрепи файл — пока переписка хранится только на этом устройстве. Нажми на имя вверху, чтобы посмотреть мой профиль.",
+                System.currentTimeMillis(), "", "", "", 0
+        );
+    }
+
+    private boolean saveMessages() {
+        if (!storageAvailable) return false;
         JSONArray array = new JSONArray();
         for (ChatMessage message : messages) {
             try {
                 array.put(message.toJson());
-            } catch (JSONException ignored) {
+            } catch (JSONException exception) {
+                storageAvailable = false;
+                return false;
             }
         }
-        preferences.edit().putString(messageKey(), array.toString()).apply();
+        try {
+            String encrypted = EncryptedStorage.encrypt(array.toString(), messageKey());
+            boolean saved = preferences.edit().putString(messageKey(), encrypted).commit();
+            if (!saved) storageAvailable = false;
+            return saved;
+        } catch (GeneralSecurityException | RuntimeException exception) {
+            storageAvailable = false;
+            return false;
+        }
     }
 
     private String messageKey() {
+        FirebaseUser currentUser = firebaseAuth.getCurrentUser();
+        String accountId = currentUser == null ? username.toLowerCase(Locale.ROOT) : currentUser.getUid();
+        if (accountId.isEmpty()) throw new IllegalStateException("No authenticated account for local chat history");
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(accountId.getBytes(StandardCharsets.UTF_8));
+            return "chat_v1_" + Base64.encodeToString(digest, Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
+        } catch (GeneralSecurityException exception) {
+            throw new IllegalStateException("Unable to create opaque local history key", exception);
+        }
+    }
+
+    private String legacyMessageKey() {
         return "messages_" + username.toLowerCase(Locale.ROOT);
+    }
+
+    private void showStorageError() {
+        Toast.makeText(this,
+                "Локальная история недоступна для безопасного чтения или записи. Сохранённые данные не изменены.",
+                Toast.LENGTH_LONG).show();
     }
 
     private FrameLayout createBrandMark(int size) {
         FrameLayout frame = new FrameLayout(this);
-        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                new int[]{Color.rgb(105, 166, 250), Color.rgb(45, 112, 219)});
-        bg.setCornerRadius(size * .34f);
-        frame.setBackground(bg);
-        TextView letter = text("d", size * .48f / getResources().getDisplayMetrics().scaledDensity, Color.WHITE, true);
-        letter.setGravity(Gravity.CENTER);
-        frame.addView(letter, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        TextView spark = text("✦", 9, Color.rgb(255, 224, 125), true);
-        FrameLayout.LayoutParams sparkParams = new FrameLayout.LayoutParams(dp(13), dp(13), Gravity.RIGHT | Gravity.TOP);
-        sparkParams.rightMargin = dp(4);
-        sparkParams.topMargin = dp(3);
-        frame.addView(spark, sparkParams);
+        ImageView mark = new ImageView(this);
+        mark.setImageResource(R.drawable.ic_duckgomz_mark);
+        mark.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        frame.addView(mark, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         return frame;
     }
 
     private FrameLayout createBotAvatar(int size) {
         FrameLayout frame = new FrameLayout(this);
         GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                new int[]{Color.rgb(106, 177, 255), Color.rgb(44, 119, 222)});
+                new int[]{Color.rgb(103, 166, 248), Color.rgb(43, 111, 218)});
         bg.setShape(GradientDrawable.OVAL);
         frame.setBackground(bg);
-        TextView letter = text("D", size * .38f / getResources().getDisplayMetrics().scaledDensity, Color.WHITE, true);
-        letter.setGravity(Gravity.CENTER);
-        frame.addView(letter, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        TextView spark = text("✦", Math.max(8, size * .17f / getResources().getDisplayMetrics().scaledDensity), Color.rgb(255, 224, 125), true);
-        FrameLayout.LayoutParams sparkParams = new FrameLayout.LayoutParams(dp(15), dp(15), Gravity.RIGHT | Gravity.TOP);
-        sparkParams.rightMargin = Math.max(dp(4), size / 8);
-        sparkParams.topMargin = Math.max(dp(3), size / 10);
-        frame.addView(spark, sparkParams);
+        ImageView plane = new ImageView(this);
+        plane.setImageResource(R.drawable.ic_duckgomz_plane);
+        plane.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        int inset = Math.max(dp(6), size / 4);
+        FrameLayout.LayoutParams planeParams = new FrameLayout.LayoutParams(size - inset * 2, size - inset * 2, Gravity.CENTER);
+        frame.addView(plane, planeParams);
         return frame;
     }
 
@@ -1053,7 +1133,7 @@ public class MainActivity extends AppCompatActivity {
         background.setColor(BLUE);
         frame.setBackground(background);
         ImageView check = new ImageView(this);
-        check.setImageResource(R.drawable.telegram_verified_check);
+        check.setImageResource(R.drawable.ic_verified_check);
         check.setColorFilter(Color.WHITE);
         check.setScaleType(ImageView.ScaleType.FIT_CENTER);
         int inset = Math.max(dp(2), size / 5);

@@ -8,6 +8,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -73,16 +74,17 @@ public final class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.Me
         row.setGravity(message.fromBot ? Gravity.START | Gravity.BOTTOM : Gravity.END | Gravity.BOTTOM);
 
         if (message.fromBot) {
-            TextView avatar = new TextView(context);
-            avatar.setText("D");
-            avatar.setTextColor(Color.WHITE);
-            avatar.setTextSize(13);
-            avatar.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-            avatar.setGravity(Gravity.CENTER);
+            FrameLayout avatar = new FrameLayout(context);
             GradientDrawable avatarBg = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                    new int[]{Color.rgb(102, 171, 250), Color.rgb(42, 120, 224)});
+                    new int[]{Color.rgb(103, 166, 248), Color.rgb(43, 111, 218)});
             avatarBg.setShape(GradientDrawable.OVAL);
             avatar.setBackground(avatarBg);
+            ImageView plane = new ImageView(context);
+            plane.setImageResource(R.drawable.ic_duckgomz_plane);
+            plane.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            int inset = dp(7);
+            FrameLayout.LayoutParams planeParams = new FrameLayout.LayoutParams(dp(30) - inset * 2, dp(30) - inset * 2, Gravity.CENTER);
+            avatar.addView(plane, planeParams);
             LinearLayout.LayoutParams avatarParams = new LinearLayout.LayoutParams(dp(30), dp(30));
             avatarParams.rightMargin = dp(8);
             avatarParams.bottomMargin = dp(2);
@@ -127,11 +129,10 @@ public final class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.Me
             fileParams.topMargin = message.text.trim().isEmpty() ? 0 : dp(8);
             body.addView(file, fileParams);
 
-            TextView fileIcon = new TextView(context);
-            fileIcon.setText("▤");
-            fileIcon.setTextColor(Color.rgb(49, 125, 226));
-            fileIcon.setTextSize(20);
-            fileIcon.setGravity(Gravity.CENTER);
+            ImageView fileIcon = new ImageView(context);
+            fileIcon.setImageResource(R.drawable.ic_file);
+            fileIcon.setColorFilter(Color.rgb(49, 125, 226));
+            fileIcon.setPadding(dp(5), dp(5), dp(5), dp(5));
             file.addView(fileIcon, new LinearLayout.LayoutParams(dp(30), dp(32)));
 
             LinearLayout fileText = new LinearLayout(context);
@@ -173,7 +174,7 @@ public final class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.Me
         metadata.addView(time);
         if (!message.fromBot) {
             ImageView checks = new ImageView(context);
-            checks.setImageResource(R.drawable.telegram_verified_check);
+            checks.setImageResource(R.drawable.ic_check_double);
             checks.setImageTintList(ColorStateList.valueOf(Color.rgb(73, 148, 241)));
             LinearLayout.LayoutParams checkParams = new LinearLayout.LayoutParams(dp(12), dp(12));
             checkParams.leftMargin = dp(3);
