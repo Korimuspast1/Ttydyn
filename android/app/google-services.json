@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1074440475540",
+    "project_id": "ppstore-24ea8",
+    "storage_bucket": "ppstore-24ea8.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1074440475540:android:829f02f56cb3c61ff47581",
+        "android_client_info": {
+          "package_name": "app.duckgomz.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBBHMCqHOa4bJMyCu4Y7MbevfUPGZFmMdg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
