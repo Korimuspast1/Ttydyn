@@ -10,7 +10,7 @@ on:
       - '.github/workflows/build-android.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   debug-apk:
@@ -42,3 +42,15 @@ jobs:
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+
+      - name: Save APK to the session branch
+        run: |
+          mkdir -p artifacts
+          cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/Duckgomz.apk
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -f artifacts/Duckgomz.apk
+          if ! git diff --cached --quiet; then
+            git commit -m 'Add compiled Duckgomz debug APK'
+          fi
+          git push origin HEAD:arena/5c6c07ca-ttydyn
