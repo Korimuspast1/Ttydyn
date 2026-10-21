@@ -30,6 +30,32 @@ canvas#game {
 
 .hidden { display: none !important; }
 
+/* ---------- зерно плёнки ----------
+   Раньше зерно рисовалось на canvas каждый кадр (полноэкранный блт с
+   режимом overlay) — теперь это CSS-слой, который композитится на GPU. */
+#grain {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+  background-repeat: repeat;
+  animation: grain-jitter 0.8s steps(1) infinite;
+}
+
+@keyframes grain-jitter {
+  0% { background-position: 0 0; }
+  25% { background-position: -37px 19px; }
+  50% { background-position: 23px -41px; }
+  75% { background-position: -11px -13px; }
+  100% { background-position: 0 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #grain { animation: none; }
+}
+
 /* ---------- загрузка ---------- */
 #loading {
   position: fixed;

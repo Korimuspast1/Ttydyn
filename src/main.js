@@ -11,10 +11,11 @@ import {
   drawLamp, drawBench, drawDumpster, drawTrafo, drawHockey, drawMushroom,
   drawSandbox, drawCarousel, drawSlide, drawSwing, drawBusStop, drawPigeon,
   drawCat, drawGrandma, drawMan, drawBall, rr, hash01,
+  bakeSprite, drawTreeBody, drawTreeLeaves,
 } from './render.js';
 import {
   drawRain, drawSplashes, drawLighting, drawFlashlight, drawFog, drawVignette,
-  drawGrain, colorGrade, drawLensDrops,
+  colorGrade, drawLensDrops, buildLightLayer,
 } from './fx.js';
 import { Player } from './player.js';
 import { Soundscape } from './audio.js';
@@ -195,8 +196,41 @@ if (isTouch) {
 }
 
 // ── инициализация ────────────────────────────────────────────
+// ── адаптивное качество ──────────────────────────────────────
+// Игра сама смотрит на своё время кадра и, если машина слабая, снижает
+// разрешение и отключает самые дорогие эффекты. И наоборот — возвращает,
+// когда становится легче.
+const quality = { level: 0, avg: 16.7, cd: 4, auto: true };
+
+function targetDpr() {
+  const base = window.devicePixelRatio || 1;
+  if (quality.level === 0) return Math.min(base, 1.5);
+  if (quality.level === 1) return Math.min(base, 1);
+  return 0.75;
+}
+
+function applyQuality() {
+  resize();
+}
+
+function adaptQuality(dt) {
+  if (!quality.auto) return;
+  quality.avg += (dt * 1000 - quality.avg) * 0.03;
+  quality.cd -= dt;
+  if (quality.cd > 0) return;
+  if (quality.avg > 34 && quality.level < 2) {
+    quality.level++;
+    applyQuality();
+    quality.cd = 4;
+  } else if (quality.avg < 14 && quality.level > 0) {
+    quality.level--;
+    applyQuality();
+    quality.cd = 8;
+  }
+}
+
 function resize() {
-  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  dpr = targetDpr();
   vw = window.innerWidth;
   vh = window.innerHeight;
   canvas.width = Math.floor(vw * dpr);
@@ -240,6 +274,90 @@ function initWorld() {
     drawBuilding(g, b, 0);
     buildingSprites.set(b.id, { canvas: c, x: b.x - 20, y: top - 10 });
   }
+  buildSprites();
+  buildStaticLights();
+}
+
+// ── спрайты: всё статичное рисуется один раз ──────────────────
+const sprites = {
+  trees: new Map(),
+  lamps: new Map(),
+  benches: new Map(),
+  dumpsters: new Map(),
+  cars: new Map(),
+  trafo: null, hockey: null, busStop: null, garages: null,
+  slide: null, sandbox: null, mushroom: null, carousel: null,
+};
+let lightLayer = null;
+
+function buildSprites() {
+  for (const t of trees) {
+    const r = 115 * t.s;
+    const h = 196 * t.s;
+    sprites.trees.set(t, bakeSprite(r * 2, h + 18, t.x - r, t.y - h, (g) => drawTreeBody(g, t)));
+  }
+  for (const l of lamps) {
+    sprites.lamps.set(l, bakeSprite(60, 264, l.x - 28, l.y - 106, (g) => drawLamp(g, l, true)));
+  }
+  for (const b of benches) {
+    sprites.benches.set(b, bakeSprite(92, 78, b.x - 46, b.y - 56, (g) => drawBench(g, b)));
+  }
+  for (const d of dumpsters) {
+    sprites.dumpsters.set(d, bakeSprite(48, 88, d.x - 22, d.y - 56, (g) => drawDumpster(g, d)));
+  }
+  for (const c of cars) {
+    sprites.cars.set(c, bakeSprite(c.w + 40, c.h + 46, c.x - 20, c.y - 20, (g) => drawCar(g, c, 0)));
+  }
+  sprites.trafo = bakeSprite(trafo.w + 32, trafo.d + 92, trafo.x - 16, trafo.y - 40, (g) => drawTrafo(g, 0));
+  sprites.hockey = bakeSprite(hockey.w + 32, hockey.d + 32, hockey.x - 16, hockey.y - 16, (g) => drawHockey(g, 0));
+  sprites.busStop = bakeSprite(busStop.w + 32, busStop.d + 116, busStop.x - 16, busStop.y - 100, (g) => drawBusStop(g, 0));
+  sprites.garages = bakeSprite(garages.w + 56, garages.baseY + garages.d + 44 - (garages.topY - 44), garages.x - 28, garages.topY - 44, (g) => drawGarages(g, garages, 0));
+  sprites.slide = bakeSprite(slide.w + 40, slide.d + 40, slide.x - 20, slide.y - 20, (g) => drawSlide(g));
+  sprites.sandbox = bakeSprite(sandbox.w + 28, sandbox.d + 28, sandbox.x - 14, sandbox.y - 14, (g) => drawSandbox(g));
+  sprites.mushroom = bakeSprite(136, 126, mushroom.x - 68, mushroom.y - 74, (g) => drawMushroom(g));
+  const cr = carousel.r + 16;
+  sprites.carousel = bakeSprite(cr * 2, cr * 2, carousel.x - cr, carousel.y - cr, (g) => drawCarousel(g));
+}
+
+// ── статичный свет запекается в один слой ─────────────────────
+function buildStaticLights() {
+  const lights = [];
+  // фонари двора — все одного размера и яркости, ровный ряд
+  for (const l of lamps) {
+    lights.push({ x: l.x + 18, y: l.y - 92, r: 200, color: [255, 196, 128], a: 0.5 });
+  }
+  // общий свет от окон дома — заполняет двор
+  for (const b of buildings) {
+    if (b.shop) continue;
+    const n = Math.max(2, Math.round(b.w / 420));
+    for (let i = 0; i < n; i++) {
+      const lx = b.x + (i + 0.5) * (b.w / n);
+      lights.push({ x: lx, y: b.baseY + 150, r: 380, color: [214, 178, 128], a: 0.072 });
+    }
+  }
+  // окна магазина
+  lights.push({ x: 2366, y: 1268, r: 240, color: [255, 206, 148], a: 0.4 });
+  // свет из подъездов
+  for (const b of buildings) {
+    if (b.shop) continue;
+    for (let i = 0; i < b.entrances; i++) {
+      const ex = b.x + (i + 0.5) * (b.w / b.entrances);
+      lights.push({ x: ex, y: b.baseY - 18, r: 82, color: [255, 208, 158], a: 0.3 });
+    }
+  }
+  // остановка
+  lights.push({ x: busStop.x + busStop.w / 2, y: busStop.y - 8, r: 140, color: [226, 236, 244], a: 0.24 });
+  // холодный свет неба — чтобы совсем чёрных провалов не было
+  for (let i = 0; i < 6; i++) {
+    lights.push({
+      x: (i + 0.5) * (W / 6),
+      y: 520 + (i % 2) * 420,
+      r: 620,
+      color: [104, 128, 156],
+      a: 0.05,
+    });
+  }
+  lightLayer = buildLightLayer(lights, W, H);
 }
 
 // ── камера ───────────────────────────────────────────────────
@@ -806,50 +924,57 @@ function render(now) {
   }
 
   if (inView(garages.x + garages.w / 2, garages.baseY, garages.w / 2 + 200)) {
-    items.push({ y: garages.baseY, draw: () => drawGarages(ctx, garages, t) });
+    items.push({ y: garages.baseY, draw: () => { if (sprites.garages) ctx.drawImage(sprites.garages.canvas, sprites.garages.x, sprites.garages.y); } });
   }
 
   for (const tr of trees) {
     if (!inView(tr.x, tr.y)) continue;
-    items.push({ y: tr.y, draw: () => drawTree(ctx, tr, t) });
+    const spr = sprites.trees.get(tr);
+    items.push({ y: tr.y, draw: () => {
+      if (spr) ctx.drawImage(spr.canvas, spr.x, spr.y);
+      drawTreeLeaves(ctx, tr, t);
+    } });
   }
 
   for (const l of lamps) {
     if (!inView(l.x, l.y)) continue;
-    items.push({ y: l.y, draw: () => drawLamp(ctx, l, true) });
+    const spr = sprites.lamps.get(l);
+    items.push({ y: l.y, draw: () => { if (spr) ctx.drawImage(spr.canvas, spr.x, spr.y); } });
   }
 
   for (const b of benches) {
     if (!inView(b.x, b.y, 120)) continue;
-    items.push({ y: b.y, draw: () => drawBench(ctx, b) });
+    const spr = sprites.benches.get(b);
+    items.push({ y: b.y, draw: () => { if (spr) ctx.drawImage(spr.canvas, spr.x, spr.y); } });
   }
 
   for (const dd of dumpsters) {
     if (!inView(dd.x, dd.y, 120)) continue;
-    items.push({ y: dd.y, draw: () => drawDumpster(ctx, dd) });
+    const spr = sprites.dumpsters.get(dd);
+    items.push({ y: dd.y, draw: () => { if (spr) ctx.drawImage(spr.canvas, spr.x, spr.y); } });
   }
 
   if (inView(trafo.x + trafo.w / 2, trafo.y + trafo.d, 200)) {
-    items.push({ y: trafo.y + trafo.d, draw: () => drawTrafo(ctx, t) });
+    items.push({ y: trafo.y + trafo.d, draw: () => { if (sprites.trafo) ctx.drawImage(sprites.trafo.canvas, sprites.trafo.x, sprites.trafo.y); } });
   }
 
   if (inView(hockey.x + hockey.w / 2, hockey.y + hockey.d / 2, hockey.w)) {
-    items.push({ y: hockey.y - 40, draw: () => drawHockey(ctx, t) });
+    items.push({ y: hockey.y - 40, draw: () => { if (sprites.hockey) ctx.drawImage(sprites.hockey.canvas, sprites.hockey.x, sprites.hockey.y); } });
   }
 
   if (inView(busStop.x + busStop.w / 2, busStop.y + busStop.d, 220)) {
-    items.push({ y: busStop.y + busStop.d, draw: () => drawBusStop(ctx, t) });
+    items.push({ y: busStop.y + busStop.d, draw: () => { if (sprites.busStop) ctx.drawImage(sprites.busStop.canvas, sprites.busStop.x, sprites.busStop.y); } });
   }
 
   if (inView(playground.x + playground.w / 2, playground.y + playground.d / 2, 420)) {
-    items.push({ y: mushroom.y, draw: () => drawMushroom(ctx) });
-    items.push({ y: sandbox.y + sandbox.d, draw: () => drawSandbox(ctx) });
-    items.push({ y: slide.y + slide.d, draw: () => drawSlide(ctx) });
+    items.push({ y: mushroom.y, draw: () => { if (sprites.mushroom) ctx.drawImage(sprites.mushroom.canvas, sprites.mushroom.x, sprites.mushroom.y); } });
+    items.push({ y: sandbox.y + sandbox.d, draw: () => { if (sprites.sandbox) ctx.drawImage(sprites.sandbox.canvas, sprites.sandbox.x, sprites.sandbox.y); } });
+    items.push({ y: slide.y + slide.d, draw: () => { if (sprites.slide) ctx.drawImage(sprites.slide.canvas, sprites.slide.x, sprites.slide.y); } });
     items.push({ y: swing.y + 18, draw: () => drawSwing(ctx, { seat: state.swingSeat, active: state.swingActive }, t) });
     items.push({
       y: carousel.y + 12,
       draw: () => {
-        drawCarousel(ctx);
+        if (sprites.carousel) ctx.drawImage(sprites.carousel.canvas, sprites.carousel.x, sprites.carousel.y);
         ctx.save();
         ctx.translate(carousel.x, carousel.y);
         ctx.rotate(state.carouselSpin);
@@ -870,7 +995,8 @@ function render(now) {
   // машины во дворе
   for (const c of cars) {
     if (!inView(c.x + c.w / 2, c.y + c.h / 2, 160)) continue;
-    items.push({ y: c.y + c.h, draw: () => drawCar(ctx, c, t) });
+    const spr = sprites.cars.get(c);
+    items.push({ y: c.y + c.h, draw: () => { if (spr) ctx.drawImage(spr.canvas, spr.x, spr.y); } });
   }
 
   // голуби
@@ -946,76 +1072,28 @@ function render(now) {
   ctx.globalAlpha = 1;
 
   // круги от дождя
-  drawSplashes(ctx, cam, vw, vh, t);
+  drawSplashes(ctx, cam, vw, vh, t, quality.level === 0 ? 70 : quality.level === 1 ? 40 : 0);
 
   ctx.restore();
 
   // ── свет ──
-  const lights = [];
-  for (const l of lamps) {
-    lights.push({
-      x: l.x + 18,
-      y: l.y - 92,
-      r: 200,
-      color: [255, 196, 128],
-      a: 0.5,
-      flicker: l.x === 1160,
-    });
-  }
-  // общий свет от окон дома — заполняет двор
-  for (const b of buildings) {
-    if (b.shop) continue;
-    const n = Math.max(2, Math.round(b.w / 420));
-    for (let i = 0; i < n; i++) {
-      const lx = b.x + (i + 0.5) * (b.w / n);
-      lights.push({ x: lx, y: b.baseY + 150, r: 380, color: [214, 178, 128], a: 0.072 });
-    }
-  }
-  // окна магазина
-  lights.push({ x: 2366, y: 1268, r: 240, color: [255, 206, 148], a: 0.4 });
-  // свет из подъездов
-  for (const b of buildings) {
-    if (b.shop) continue;
-    for (let i = 0; i < b.entrances; i++) {
-      const ex = b.x + (i + 0.5) * (b.w / b.entrances);
-      lights.push({ x: ex, y: b.baseY - 18, r: 82, color: [255, 208, 158], a: 0.3 });
-    }
-  }
-  // остановка
-  lights.push({ x: busStop.x + busStop.w / 2, y: busStop.y - 8, r: 140, color: [226, 236, 244], a: 0.24 });
-  // проезжающие машины
+  // всё статичное (фонари, окна, подъезды, небо) уже запечено в lightLayer,
+  // в кадре рисуются только фары проезжающих машин
+  const dynamicLights = [];
   for (const c of passingCars) {
-    lights.push({
-      x: c.x + c.dir * 46,
-      y: c.y,
-      r: 190,
-      color: [255, 244, 214],
-      a: 0.36,
-    });
-  }
-
-  // холодный свет неба — чтобы совсем чёрных провалов не было
-  for (let i = 0; i < 6; i++) {
-    lights.push({
-      x: (i + 0.5) * (W / 6),
-      y: 520 + (i % 2) * 420,
-      r: 620,
-      color: [104, 128, 156],
-      a: 0.05,
-    });
+    dynamicLights.push({ x: c.x + c.dir * 46, y: c.y, r: 190, color: [255, 244, 214], a: 0.36 });
   }
 
   const playerLight = player.flashlight;
-  drawLighting(ctx, cam, vw, vh, lights, state.night, t);
+  drawLighting(ctx, cam, vw, vh, lightLayer, state.night, dynamicLights);
   if (playerLight) drawFlashlight(ctx, cam, vw, vh, player, t);
 
   // дождь поверх мира, но под туманом
-  drawRain(ctx, vw, vh, t, rainAmount, 0.3);
-  drawFog(ctx, vw, vh, t);
-  drawLensDrops(ctx, vw, vh, t);
+  drawRain(ctx, vw, vh, t, rainAmount * (quality.level === 0 ? 1 : quality.level === 1 ? 0.6 : 0.35), 0.3);
+  if (quality.level < 2) drawFog(ctx, vw, vh, t);
+  if (quality.level < 1) drawLensDrops(ctx, vw, vh, t);
   colorGrade(ctx, vw, vh, state.night);
   drawVignette(ctx, vw, vh);
-  drawGrain(ctx, vw, vh, 0.05);
 }
 
 function drawStreetCar(ctx, c) {
@@ -1055,12 +1133,42 @@ function frame(now) {
   last = now;
   update(dt, now);
   render(now);
+  adaptQuality(dt);
   requestAnimationFrame(frame);
 }
 
 // ── запуск ───────────────────────────────────────────────────
+// ── зерно: плитка шума для CSS-слоя (генерится один раз) ─────
+function initGrain() {
+  const el = document.getElementById('grain');
+  if (!el) return;
+  const size = 128;
+  const c = document.createElement('canvas');
+  c.width = size;
+  c.height = size;
+  const g = c.getContext('2d');
+  const img = g.createImageData(size, size);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const v = (Math.random() * 255) | 0;
+    d[i] = v;
+    d[i + 1] = v;
+    d[i + 2] = v;
+    d[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  let url;
+  try {
+    url = c.toDataURL ? c.toDataURL('image/png') : `data:image/png;base64,${c.toBuffer('image/png').toString('base64')}`;
+  } catch (e) {
+    return; // окружение без экспорта картинок (например, headless-тесты) — просто без зерна
+  }
+  el.style.backgroundImage = `url(${url})`;
+}
+
 function boot() {
   resize();
+  initGrain();
   ctx.fillStyle = '#0a0d12';
   ctx.fillRect(0, 0, vw, vh);
 
@@ -1079,7 +1187,7 @@ function boot() {
 }
 
 // отладочный доступ (удобно и для тестов)
-window.__TOSKA__ = { player, state, cam, sound, interactables, zones };
+window.__TOSKA__ = { player, state, cam, sound, interactables, zones, quality };
 
 // клик по мышке тоже стартует
 canvas.addEventListener('pointerdown', () => {

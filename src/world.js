@@ -504,7 +504,7 @@ rects.push({ x: swing.x + swing.w - 6, y: swing.y - 8, w: 12, h: 14, tag: 'swing
 // горка
 rects.push({ x: slide.x, y: slide.y, w: slide.w, h: slide.d, tag: 'slide' });
 // карусель
-circles.push({ x: carousel.x, y: carousel.y, r: carousel.r });
+circles.push({ x: carousel.x, y: carousel.y, r: 9 }); // только стойка — по диску можно ходить
 // грибок
 circles.push({ x: mushroom.x, y: mushroom.y, r: 7 });
 // остановка
@@ -513,6 +513,9 @@ rects.push({ x: busStop.x + busStop.w - 8, y: busStop.y, w: 8, h: busStop.d, tag
 rects.push({ x: busStop.x, y: busStop.y, w: busStop.w, h: 6, tag: 'glass' });
 // машины
 for (const c of cars) rects.push({ x: c.x, y: c.y, w: c.w, h: c.h, tag: 'car' });
+
+// NPC — бабушка и мужик (раньше сквозь них проходили насквозь)
+for (const n of npcs) circles.push({ x: n.x, y: n.y, r: 11, tag: 'npc' });
 
 export function isBlocked(px, py, r = 10) {
   if (px < 24 || py < 40 || px > W - 24 || py > H - 20) return true;

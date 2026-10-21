@@ -1034,19 +1034,70 @@ export function drawBackdrop(ctx, time) {
   ctx.restore();
 }
 
-// ── ДЕРЕВЬЯ ───────────────────────────────────────────────────
-export function drawTree(ctx, t, time) {
-  const s = t.s;
-  const x = t.x, y = t.y;
-  const seed = t.seed;
-  const sway = Math.sin(time * 0.9 + seed * 12) * 2.2;
-  const isBirch = t.kind === 'birch';
-  const trunkH = (isBirch ? 120 : 134) * s;
-  const trunkW = (isBirch ? 9 : 12) * s;
-  const crownY = -trunkH * 0.86;
-  const crownR = (isBirch ? 62 : 52) * s;
-  const bare = 0.15 + hash01(seed * 7.7) * 0.5; // 0.25..0.8 — сколько листвы осталось
+// ── ЗАПЕКАНИЕ СПРАЙТОВ ────────────────────────────────────────
+// Статичные объекты рисуются один раз в offscreen-canvas, дальше только
+// drawImage. Границы задаются с запасом, лишнее отрезается по альфе.
+export function bakeSprite(w, h, x, y, draw) {
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.ceil(w));
+  c.height = Math.max(1, Math.ceil(h));
+  const g = c.getContext('2d');
+  g.translate(-x, -y);
+  draw(g);
 
+  let bx = 0, by = 0, bw = c.width, bh = c.height;
+  try {
+    const data = g.getImageData(0, 0, c.width, c.height).data;
+    let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+    for (let yy = 0; yy < c.height; yy++) {
+      const row = yy * c.width;
+      for (let xx = 0; xx < c.width; xx++) {
+        if (data[(row + xx) * 4 + 3] > 2) {
+          if (xx < x0) x0 = xx;
+          if (xx > x1) x1 = xx;
+          if (yy < y0) y0 = yy;
+          if (yy > y1) y1 = yy;
+        }
+      }
+    }
+    if (x1 >= x0) {
+      bx = x0; by = y0;
+      bw = x1 - x0 + 1;
+      bh = y1 - y0 + 1;
+    }
+  } catch (e) {
+    // getImageData недоступен — оставляем как есть
+  }
+
+  const out = document.createElement('canvas');
+  out.width = bw;
+  out.height = bh;
+  out.getContext('2d').drawImage(c, bx, by, bw, bh, 0, 0, bw, bh);
+  return { canvas: out, x: x + bx, y: y + by };
+}
+
+// ── ДЕРЕВЬЯ ───────────────────────────────────────────────────
+// геометрия дерева — общая для тела и падающих листьев
+function treeGeom(t) {
+  const isBirch = t.kind === 'birch';
+  const s = t.s;
+  const trunkH = (isBirch ? 120 : 134) * s;
+  const crownR = (isBirch ? 62 : 52) * s;
+  return {
+    s, isBirch,
+    x: t.x, y: t.y, seed: t.seed,
+    trunkH,
+    trunkW: (isBirch ? 9 : 12) * s,
+    crownY: -trunkH * 0.86,
+    crownR,
+    bare: 0.15 + hash01(t.seed * 7.7) * 0.5,
+  };
+}
+
+// статичная часть дерева (ствол, ветви, листва). Запекается в спрайт.
+export function drawTreeBody(ctx, t) {
+  const sway = 0;
+  const { s, isBirch, x, y, seed, trunkH, trunkW, crownY, crownR, bare } = treeGeom(t);
   // мягкая тень на земле
   ctx.fillStyle = 'rgba(8,11,10,.14)';
   ctx.beginPath();
@@ -1184,7 +1235,13 @@ export function drawTree(ctx, t, time) {
   }
   ctx.globalAlpha = 1;
 
-  // пара листьев падает
+}
+
+// пара падающих листьев — единственная живая часть дерева в кадре
+export function drawTreeLeaves(ctx, t, time) {
+  const { s, seed, trunkH, crownY, crownR } = treeGeom(t);
+  const sway = Math.sin(time * 0.9 + seed * 12) * 2.2;
+  const cols = ['#8a6f2c', '#9b7a2e', '#6f5a25', '#a58638', '#5c5127', '#7d6329'];
   for (let i = 0; i < 2; i++) {
     const ph = (time * 0.22 + hash01(seed * 11 + i)) % 1;
     const fxx = (hash01(seed * 13 + i) - 0.5) * crownR * 1.4 + sway + Math.sin(time * 1.7 + i) * 9;
@@ -1196,8 +1253,11 @@ export function drawTree(ctx, t, time) {
     ctx.fill();
   }
   ctx.globalAlpha = 1;
+}
 
-  ctx.restore();
+export function drawTree(ctx, t, time) {
+  drawTreeBody(ctx, t);
+  drawTreeLeaves(ctx, t, time);
 }
 
 // ── МАШИНА ────────────────────────────────────────────────────
