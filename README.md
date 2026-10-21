@@ -3,7 +3,7 @@
 Полноценный оптимизированный 2D пиксельный симулятор Бога в духе **WorldBox** с физикой воды, сыпучих пород, эрозией, химией стихий, дипломатией королевств, войнами, зомби-апокалипсисом, чертами каждого существа, мобильным сенсорным управлением и готовым **Android `.apk`**.
 
 ## 📱 Скачать готовый Android `.apk`
-- **Прямое скачивание из Releases:** [**WorldBox-Sandbox.apk (v3.5.0)**](https://github.com/Korimuspast1/Ttydyn/releases/download/v3.5.0/WorldBox-Sandbox.apk)
+- **Прямое скачивание в 1 клик:** [**⬇ Скачать WorldBox-Sandbox.apk (v3.5.0)**](https://github.com/Korimuspast1/Ttydyn/raw/arena/a87fd327-ttydyn/WorldBox-Sandbox.apk)
 - **Файл в корне ветки:** [`WorldBox-Sandbox.apk`](./WorldBox-Sandbox.apk) (`~200 КБ`, `Android 7.0 – Android 15+`, подписан `v2 + v3`, работает полностью офлайн).
 
 ---
