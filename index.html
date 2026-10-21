@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0c0f14" />
+  <title>ТОСКА — дворы</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230c0f14'/%3E%3Crect x='6' y='10' width='20' height='16' fill='%23565a60'/%3E%3Crect x='9' y='13' width='4' height='4' fill='%23e8b57a'/%3E%3Crect x='16' y='13' width='4' height='4' fill='%238fa6b8'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <div id="title" class="screen">
+    <div class="title-bg"></div>
+    <div class="title-rain"></div>
+    <div class="title-vignette"></div>
+    <div class="title-inner">
+      <div class="title-top">дворы · ноябрь · 19:47</div>
+      <h1>ТОСКА</h1>
+      <div class="title-sub">маленькая прогулка по русскому двору</div>
+      <div class="title-start">нажми любую клавишу</div>
+      <div class="title-keys">
+        <span>WASD / стрелки — идти</span>
+        <span>Shift — бежать</span>
+        <span>E — взаимодействовать</span>
+        <span>Q — зонт</span>
+        <span>F — фонарик</span>
+        <span>M — звук</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="hud" class="hidden">
+    <div id="clock"><span id="clock-time">19:47</span><span id="clock-wx">+4° · дождь</span></div>
+    <div id="prompt"></div>
+    <div id="thought"></div>
+    <div id="keys-hint">WASD — идти · Shift — бежать · E — взаимодействовать · Q — зонт · F — фонарик · M — звук</div>
+    <div id="mute-badge" class="hidden">звук выключен · M</div>
+  </div>
+
+  <div id="touch" class="hidden">
+    <div id="stick"><div id="stick-knob"></div></div>
+    <div id="touch-buttons">
+      <button id="btn-e" aria-label="взаимодействовать">E</button>
+      <button id="btn-q" aria-label="зонт">☂</button>
+    </div>
+  </div>
+
+  <div id="loading"><span>двор просыпается…</span></div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
