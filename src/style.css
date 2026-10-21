@@ -1,0 +1,1212 @@
+@import '@fontsource/press-start-2p/cyrillic.css';
+@import '@fontsource/press-start-2p/latin.css';
+@import '@fontsource/pixelify-sans/cyrillic-400.css';
+@import '@fontsource/pixelify-sans/cyrillic-600.css';
+@import '@fontsource/pixelify-sans/cyrillic-700.css';
+@import '@fontsource/pixelify-sans/latin-400.css';
+@import '@fontsource/pixelify-sans/latin-600.css';
+@import '@fontsource/pixelify-sans/latin-700.css';
+
+:root {
+  --wb-outline: #130e0b;
+  --wb-wood-dark: #231914;
+  --wb-wood-mid: #32241d;
+  --wb-wood-light: #4a362b;
+  --wb-slot-bg: #1b130f;
+  --wb-bronze: #a8793e;
+  --wb-gold: #ffd466;
+  --wb-gold-bright: #fff0a8;
+  --wb-text: #f7efe2;
+  --wb-text-muted: #baa895;
+  --font-title: 'Press Start 2P', monospace;
+  --font-body: 'Pixelify Sans', monospace;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+}
+
+* {
+  box-sizing: border-box;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+input {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+  background: #0d2b4e;
+  font-family: var(--font-body);
+  color: var(--wb-text);
+}
+
+#game-canvas {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+#ui-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.pixel-icon {
+  display: block;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+
+.wb-panel-hidden {
+  display: none !important;
+}
+
+.wb-mobile-menu-btn,
+.wb-mobile-only-inline,
+.wb-tab-lbl-short {
+  display: none;
+}
+
+.wb-panel {
+  pointer-events: auto;
+  background: var(--wb-wood-dark);
+  border: 2px solid var(--wb-outline);
+  box-shadow:
+    inset 0 2px 0 var(--wb-bronze),
+    inset 0 -2px 0 #160f0c,
+    inset 2px 0 0 #6e4e2a,
+    inset -2px 0 0 #160f0c,
+    0 4px 0 rgba(0, 0, 0, 0.55);
+}
+
+/* Live War & World Herald Banner */
+.wb-event-banner {
+  position: fixed;
+  top: calc(10px + var(--safe-top));
+  left: 50%;
+  transform: translateX(-50%) translateY(-8px);
+  padding: 6px 14px;
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  z-index: 40;
+  text-shadow: 1px 2px 0 #000;
+  white-space: nowrap;
+  max-width: min(92vw, 680px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wb-event-banner.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Hide / Restore Buttons */
+.wb-collapse-btn {
+  margin-left: auto;
+  cursor: pointer;
+  background: #3a271d;
+  border: 2px solid var(--wb-outline);
+  color: var(--wb-gold-bright);
+  padding: 3px 8px;
+  min-height: 26px;
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  font-weight: 700;
+  box-shadow: inset 0 1px 0 var(--wb-bronze);
+}
+
+.wb-collapse-btn:hover,
+.wb-collapse-btn.active {
+  background: #573a29;
+  border-color: var(--wb-gold);
+}
+
+.wb-passport-close {
+  min-width: 30px;
+  min-height: 28px;
+  font-size: 13px;
+}
+
+.wb-restore-pill {
+  position: fixed;
+  cursor: pointer;
+  padding: 7px 13px;
+  min-height: 36px;
+  color: var(--wb-gold-bright);
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  font-weight: 700;
+  z-index: 28;
+}
+
+.wb-restore-pill:hover {
+  background: var(--wb-wood-light);
+  border-color: var(--wb-gold);
+}
+
+.wb-restore-top-left {
+  top: calc(8px + var(--safe-top));
+  left: calc(8px + var(--safe-left));
+}
+
+.wb-restore-bottom {
+  bottom: calc(8px + var(--safe-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+/* Top-Left Panel */
+.wb-top-left {
+  position: fixed;
+  top: calc(10px + var(--safe-top));
+  left: calc(10px + var(--safe-left));
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-width: 560px;
+  z-index: 25;
+}
+
+.wb-brand-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.wb-crown-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--wb-gold);
+  box-shadow: 0 0 0 2px var(--wb-outline);
+}
+
+.wb-game-title {
+  font-family: var(--font-title);
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  color: var(--wb-gold);
+  text-shadow: 1px 2px 0 var(--wb-outline);
+}
+
+.wb-version-tag {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 5px;
+  background: #3d2c22;
+  border: 1px solid var(--wb-bronze);
+  color: var(--wb-gold-bright);
+}
+
+.wb-stats-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #cfe4f7;
+  flex-wrap: nowrap;
+}
+
+.wb-pop-pill b {
+  color: var(--wb-gold-bright);
+}
+
+.wb-war-pill b {
+  color: #9bb8d3;
+}
+
+.wb-war-pill.wb-war-active {
+  color: #ff9c92;
+}
+
+.wb-war-pill.wb-war-active b {
+  color: #ff4d4f;
+}
+
+.wb-sep {
+  color: #6b5340;
+}
+
+.wb-hints-row {
+  font-size: 11.5px;
+  color: var(--wb-text-muted);
+}
+
+.wb-quick-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.wb-mini-btn {
+  cursor: pointer;
+  background: var(--wb-wood-mid);
+  border: 2px solid var(--wb-outline);
+  box-shadow:
+    inset 0 1px 0 var(--wb-bronze),
+    0 2px 0 rgba(0, 0, 0, 0.45);
+  color: var(--wb-text);
+  padding: 4px 8px;
+  min-height: 28px;
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  font-weight: 700;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wb-mini-btn:hover {
+  background: var(--wb-wood-light);
+  color: var(--wb-gold-bright);
+}
+
+.wb-mini-btn:active {
+  transform: translateY(1px);
+}
+
+.wb-mini-accent {
+  background: #4e3720;
+  color: var(--wb-gold-bright);
+  border-color: var(--wb-gold);
+}
+
+.wb-mini-save {
+  background: #1f4030;
+  color: #a9ffd0;
+  border-color: #46c97f;
+}
+
+.wb-mini-save:hover {
+  background: #2b5942;
+}
+
+.wb-mini-apk {
+  background: #1c3a57;
+  color: #99e9f2;
+  border-color: #4dabf7;
+}
+
+.wb-mini-apk:hover {
+  background: #244b70;
+  color: #ffffff;
+}
+
+.wb-mini-danger {
+  background: #4a1e1c;
+  color: #ffb3b0;
+}
+
+/* Ergonomic Right-Edge Thumb Controls Dock */
+.wb-thumb-dock {
+  position: fixed;
+  right: calc(10px + var(--safe-right));
+  top: 50%;
+  transform: translateY(-56%);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 5px;
+  z-index: 24;
+}
+
+.wb-thumb-btn {
+  cursor: pointer;
+  width: 46px;
+  min-height: 42px;
+  padding: 3px 2px;
+  background: var(--wb-slot-bg);
+  border: 2px solid var(--wb-outline);
+  box-shadow:
+    inset 0 1px 0 var(--wb-bronze),
+    0 2px 0 rgba(0, 0, 0, 0.5);
+  color: var(--wb-gold-bright);
+  font-family: var(--font-body);
+  font-size: 17px;
+  font-weight: 700;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  line-height: 1;
+}
+
+.wb-thumb-btn small {
+  font-size: 9px;
+  letter-spacing: 0.2px;
+  color: var(--wb-text);
+}
+
+.wb-thumb-btn:active {
+  transform: scale(0.95);
+}
+
+.wb-thumb-mode-btn {
+  min-height: 50px;
+  background: #3d2c1d;
+  border-color: var(--wb-gold);
+}
+
+.wb-thumb-mode-btn.pan-active {
+  background: #143952;
+  border-color: #66d9e8;
+  box-shadow:
+    0 0 0 1px #0b1926,
+    inset 0 0 0 1px #99e9f2;
+}
+
+.wb-thumb-mode-btn.pan-active small {
+  color: #99e9f2;
+}
+
+.wb-thumb-glyph {
+  font-size: 17px;
+}
+
+/* Top-Right Geological Cutaway Inspector */
+.wb-top-right {
+  position: fixed;
+  top: calc(10px + var(--safe-top));
+  right: calc(10px + var(--safe-right));
+  padding: 8px 10px;
+  width: 162px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  z-index: 20;
+}
+
+.wb-slice-header {
+  font-family: var(--font-title);
+  font-size: 7.5px;
+  color: var(--wb-gold);
+  letter-spacing: 0.4px;
+  text-shadow: 1px 1px 0 #000;
+}
+
+.wb-slice-canvas {
+  width: 136px;
+  height: 76px;
+  border: 2px solid var(--wb-outline);
+  box-shadow: inset 0 0 0 1px #4f657d;
+  image-rendering: pixelated;
+}
+
+.wb-inspector-stats {
+  width: 100%;
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.wb-stat-biome {
+  font-weight: 700;
+  color: var(--wb-gold-bright);
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wb-stat-kingdom {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #ffd466;
+  margin-bottom: 3px;
+}
+
+.wb-stat-line {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: var(--wb-text-muted);
+}
+
+.wb-stat-line b {
+  color: var(--wb-text);
+}
+
+/* Bottom WorldBox Toolbar Dock */
+.wb-dock-wrapper {
+  position: fixed;
+  bottom: calc(6px + var(--safe-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(1220px, calc(100vw - 14px - var(--safe-left) - var(--safe-right)));
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  pointer-events: auto;
+  z-index: 22;
+}
+
+.wb-info-plaque {
+  align-self: center;
+  margin-bottom: 4px;
+  padding: 4px 12px;
+  background: rgba(24, 17, 13, 0.94);
+  border: 2px solid var(--wb-outline);
+  box-shadow: inset 0 1px 0 #70512d;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  max-width: 100%;
+}
+
+.wb-info-title {
+  font-family: var(--font-title);
+  font-size: 8.5px;
+  white-space: nowrap;
+  text-shadow: 1px 1px 0 #000;
+}
+
+.wb-info-desc {
+  font-size: 13px;
+  color: #e6dacb;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wb-dock-top-bar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 0 4px;
+}
+
+.wb-tabs-strip {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+  flex: 1;
+  min-width: 0;
+}
+
+.wb-tabs-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.wb-tab-btn {
+  cursor: pointer;
+  background: #241a15;
+  border: 2px solid var(--wb-outline);
+  border-bottom: none;
+  padding: 5px 9px;
+  color: var(--wb-text-muted);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  box-shadow: inset 0 2px 0 #594029;
+}
+
+.wb-tab-btn:hover {
+  background: var(--wb-wood-light);
+  color: var(--wb-text);
+}
+
+.wb-tab-btn.active {
+  background: var(--wb-wood-mid);
+  color: var(--wb-gold);
+  padding-top: 7px;
+  box-shadow:
+    inset 0 2px 0 var(--wb-gold),
+    inset 2px 0 0 var(--wb-bronze),
+    inset -2px 0 0 #1a120e;
+  position: relative;
+  top: 2px;
+  z-index: 3;
+}
+
+.wb-dock-controls-inline {
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.wb-pill-group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  background: var(--wb-wood-dark);
+  border: 2px solid var(--wb-outline);
+  padding: 2px 5px;
+  box-shadow: inset 0 1px 0 #5e4429;
+}
+
+.wb-group-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--wb-text-muted);
+  margin-right: 2px;
+}
+
+.wb-chip-btn {
+  cursor: pointer;
+  background: var(--wb-slot-bg);
+  border: 1px solid #4d392b;
+  color: var(--wb-text-muted);
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 3px 6px;
+  min-width: 26px;
+  min-height: 24px;
+}
+
+.wb-chip-btn:hover {
+  color: #fff;
+  border-color: var(--wb-bronze);
+}
+
+.wb-chip-btn.active {
+  background: #593f22;
+  color: var(--wb-gold-bright);
+  border-color: var(--wb-gold);
+}
+
+.wb-shelf {
+  background: var(--wb-wood-mid);
+  border: 3px solid var(--wb-outline);
+  box-shadow:
+    inset 0 3px 0 var(--wb-bronze),
+    inset 0 -3px 0 #19120e,
+    inset 3px 0 0 #785530,
+    inset -3px 0 0 #19120e,
+    0 6px 0 rgba(0, 0, 0, 0.65);
+  padding: 7px 9px;
+  position: relative;
+  z-index: 2;
+}
+
+.wb-tray {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 58px;
+  flex-wrap: wrap;
+  max-height: 128px;
+  overflow-y: auto;
+  touch-action: pan-x pan-y;
+}
+
+.wb-tray-divider {
+  width: 3px;
+  height: 44px;
+  background: #1a120e;
+  border-left: 1px solid #66492d;
+  border-right: 1px solid #66492d;
+  flex-shrink: 0;
+}
+
+/* WorldBox Item Buttons */
+.wb-power-btn {
+  position: relative;
+  background: var(--wb-slot-bg);
+  border: 2px solid var(--wb-outline);
+  box-shadow:
+    inset 0 2px 0 #0e0a08,
+    inset 0 -2px 0 #473428,
+    0 2px 0 #59412b;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 3px 2px 2px;
+  color: var(--wb-text);
+  transition: transform 0.06s steps(2);
+  flex-shrink: 0;
+  touch-action: manipulation;
+}
+
+.wb-power-compact {
+  width: 54px;
+  height: 50px;
+}
+
+.wb-power-large {
+  width: 68px;
+  height: 60px;
+}
+
+.wb-power-btn:hover {
+  background: #2b1f19;
+  transform: translateY(-2px);
+}
+
+.wb-power-btn.selected {
+  background: #3d2c1d;
+  border-color: var(--wb-gold);
+  box-shadow:
+    0 0 0 2px var(--wb-outline),
+    inset 0 0 0 2px var(--wb-gold-bright),
+    0 4px 12px rgba(255, 212, 102, 0.28);
+  transform: translateY(-2px);
+}
+
+.wb-hotkey {
+  position: absolute;
+  top: 2px;
+  left: 3px;
+  font-family: var(--font-title);
+  font-size: 6px;
+  color: var(--wb-gold);
+  text-shadow: 1px 1px 0 #000;
+}
+
+.wb-power-label {
+  font-family: var(--font-body);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--wb-text);
+  text-shadow: 1px 1px 0 #000;
+  max-width: 52px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-power-large .wb-power-label {
+  font-size: 11.5px;
+  max-width: 64px;
+}
+
+.wb-power-btn.selected .wb-power-label {
+  color: var(--wb-gold-bright);
+}
+
+/* Save / Load & Random World Tab */
+.wb-saves-tray {
+  justify-content: flex-start;
+  align-items: stretch;
+  gap: 10px;
+  flex-wrap: nowrap;
+  max-height: 136px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.wb-save-controls-col {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.wb-save-form-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: nowrap;
+}
+
+.wb-save-input {
+  background: #140e0b;
+  border: 2px solid var(--wb-bronze);
+  color: var(--wb-gold-bright);
+  padding: 4px 8px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  width: 150px;
+  outline: none;
+}
+
+.wb-save-input:focus {
+  border-color: var(--wb-gold);
+}
+
+.wb-action-card {
+  cursor: pointer;
+  background: var(--wb-slot-bg);
+  border: 2px solid var(--wb-outline);
+  box-shadow:
+    inset 0 2px 0 #59412b,
+    0 2px 0 rgba(0, 0, 0, 0.45);
+  color: var(--wb-text);
+  padding: 5px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-family: var(--font-body);
+}
+
+.wb-action-highlight {
+  background: #3d2c1d;
+  border-color: var(--wb-gold);
+}
+
+.wb-action-card span {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--wb-gold-bright);
+}
+
+.wb-action-card small {
+  font-size: 11px;
+  color: var(--wb-text-muted);
+}
+
+.wb-action-card:hover {
+  background: #4e3824;
+}
+
+.wb-saves-list {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 4px;
+}
+
+.wb-saves-empty {
+  color: var(--wb-text-muted);
+  font-size: 12.5px;
+  padding: 8px 12px;
+  white-space: nowrap;
+}
+
+.wb-save-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--wb-slot-bg);
+  border: 2px solid var(--wb-bronze);
+  padding: 5px 8px;
+  min-width: 255px;
+  flex-shrink: 0;
+}
+
+.wb-save-thumb {
+  width: 64px;
+  height: 42px;
+  border: 1px solid #000;
+  image-rendering: pixelated;
+  flex-shrink: 0;
+}
+
+.wb-save-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.wb-save-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--wb-gold-bright);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+
+.wb-save-sub {
+  font-size: 11px;
+  color: var(--wb-text-muted);
+}
+
+.wb-save-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+/* Physics Tab */
+.wb-physics-tray {
+  gap: 8px;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  overflow-x: auto;
+}
+
+.wb-slider-box {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: var(--wb-slot-bg);
+  border: 2px solid var(--wb-outline);
+  padding: 5px 10px;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.wb-slider-box b {
+  color: var(--wb-gold);
+}
+
+.wb-slider-box input[type='range'] {
+  width: 125px;
+  accent-color: #ffd466;
+  cursor: pointer;
+}
+
+.wb-toggle-pill {
+  cursor: pointer;
+  background: var(--wb-slot-bg);
+  border: 2px solid var(--wb-outline);
+  padding: 7px 10px;
+  color: var(--wb-text-muted);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.wb-toggle-pill.active {
+  background: #3d2c1d;
+  color: var(--wb-gold-bright);
+  border-color: var(--wb-bronze);
+}
+
+.wb-weather-pill {
+  color: #8ce99a;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.wb-unit-passport {
+  position: fixed;
+  top: calc(12px + var(--safe-top));
+  right: calc(182px + var(--safe-right));
+  width: 238px;
+  padding: 9px 10px;
+  pointer-events: auto;
+  z-index: 35;
+}
+
+.wb-unit-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  border-bottom: 2px solid #4a3525;
+  padding-bottom: 5px;
+  margin-bottom: 6px;
+}
+
+.wb-unit-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--wb-gold-bright);
+}
+
+.wb-unit-sub {
+  font-size: 11px;
+  color: var(--wb-text-muted);
+}
+
+.wb-unit-alerts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 5px;
+}
+
+.wb-unit-alert {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 5px;
+  border: 2px solid #000;
+}
+
+.wb-alert-drown {
+  background: #0b7285;
+  color: #e3fafc;
+}
+
+.wb-alert-zombie {
+  background: #2b8a3e;
+  color: #d8f5a2;
+}
+
+.wb-alert-bless {
+  background: #e67700;
+  color: #fff9db;
+}
+
+.wb-trait-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+  padding-top: 5px;
+  border-top: 2px solid #4a3525;
+}
+
+.wb-trait-chip {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 5px;
+  background: #1d1510;
+  border: 1px solid var(--wb-bronze);
+}
+
+/* ============================================================================
+   MOBILE & TABLET RESPONSIVE PORT (PORTRAIT + LANDSCAPE PHONES!)
+   ============================================================================ */
+@media (max-width: 960px), (max-height: 540px) {
+  .wb-brand-row,
+  .wb-hints-row,
+  .wb-desktop-only,
+  .wb-fps-pill,
+  .wb-stat-word,
+  .wb-top-right,
+  .wb-info-desc,
+  .wb-hotkey,
+  .wb-group-label,
+  .wb-tab-lbl-full {
+    display: none !important;
+  }
+
+  .wb-mobile-menu-btn,
+  .wb-mobile-only-inline,
+  .wb-tab-lbl-short {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .wb-top-left {
+    top: calc(6px + var(--safe-top));
+    left: calc(6px + var(--safe-left));
+    right: calc(6px + var(--safe-right));
+    max-width: none;
+    padding: 5px 8px;
+    gap: 6px;
+  }
+
+  .wb-stats-row {
+    width: 100%;
+    font-size: 12.5px;
+    gap: 5px;
+  }
+
+  .wb-mobile-menu-btn {
+    margin-left: auto;
+    padding: 3px 8px;
+    min-height: 28px;
+  }
+
+  .wb-mobile-only-inline {
+    margin-left: 0;
+    padding: 3px 7px;
+    min-height: 28px;
+  }
+
+  .wb-quick-buttons {
+    display: none;
+    padding-top: 5px;
+    border-top: 2px solid #4a3525;
+    gap: 5px;
+  }
+
+  .wb-quick-buttons.wb-mobile-open {
+    display: flex;
+  }
+
+  .wb-mini-btn {
+    min-height: 33px;
+    padding: 5px 9px;
+    font-size: 12px;
+  }
+
+  .wb-event-banner {
+    top: calc(48px + var(--safe-top));
+    font-size: 12px;
+    padding: 5px 10px;
+  }
+
+  .wb-unit-passport {
+    top: calc(50px + var(--safe-top));
+    left: calc(8px + var(--safe-left));
+    right: auto;
+    width: min(246px, calc(100vw - 68px - var(--safe-left) - var(--safe-right)));
+    padding: 7px 9px;
+  }
+
+  .wb-thumb-dock {
+    right: calc(6px + var(--safe-right));
+    top: 44%;
+    transform: translateY(-50%);
+    padding: 4px;
+    gap: 4px;
+  }
+
+  .wb-dock-wrapper {
+    bottom: calc(4px + var(--safe-bottom));
+    width: calc(100vw - 10px - var(--safe-left) - var(--safe-right));
+  }
+
+  .wb-info-plaque {
+    padding: 2px 10px;
+    margin-bottom: 3px;
+  }
+
+  .wb-dock-top-bar {
+    flex-wrap: wrap;
+    gap: 3px;
+    padding: 0 2px;
+  }
+
+  .wb-tabs-strip {
+    order: 2;
+    width: 100%;
+    flex: none;
+  }
+
+  .wb-dock-controls-inline {
+    order: 1;
+    width: 100%;
+    justify-content: space-between;
+    margin-bottom: 2px;
+  }
+
+  .wb-chip-btn {
+    padding: 4px 7px;
+    min-width: 28px;
+    min-height: 27px;
+    font-size: 12px;
+  }
+
+  .wb-shelf {
+    padding: 6px 7px;
+  }
+
+  /* Crisp 2-row horizontal touch-swipeable shelf on Portrait Phones */
+  .wb-powers-grid {
+    display: grid;
+    grid-auto-flow: column;
+    grid-template-rows: repeat(2, 52px);
+    grid-auto-columns: 56px;
+    justify-content: flex-start;
+    align-content: center;
+    gap: 5px;
+    max-height: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
+    padding-bottom: 2px;
+  }
+
+  .wb-powers-grid::-webkit-scrollbar {
+    display: none;
+  }
+
+  .wb-tray-divider {
+    display: none;
+  }
+
+  .wb-power-compact,
+  .wb-power-large {
+    width: 56px;
+    height: 52px;
+  }
+
+  .wb-power-label,
+  .wb-power-large .wb-power-label {
+    font-size: 10px;
+    max-width: 52px;
+  }
+}
+
+/* Ultra-clean Single-Row Shelf on Landscape Phones (e.g. 844x390 / 800x360)! */
+@media (max-height: 520px) {
+  .wb-info-plaque {
+    display: none;
+  }
+
+  .wb-dock-top-bar {
+    flex-wrap: nowrap;
+  }
+
+  .wb-tabs-strip {
+    order: 1;
+    width: auto;
+    flex: 1;
+  }
+
+  .wb-dock-controls-inline {
+    order: 2;
+    width: auto;
+    margin-bottom: 3px;
+  }
+
+  .wb-powers-grid {
+    grid-template-rows: repeat(1, 50px);
+    grid-auto-columns: 54px;
+    min-height: 50px;
+  }
+
+  .wb-power-compact,
+  .wb-power-large {
+    width: 54px;
+    height: 50px;
+  }
+
+  .wb-thumb-dock {
+    top: 42%;
+    flex-direction: row;
+    top: calc(46px + var(--safe-top));
+    right: calc(6px + var(--safe-right));
+    transform: none;
+  }
+
+  .wb-thumb-btn {
+    width: 40px;
+    min-height: 36px;
+    font-size: 15px;
+  }
+
+  .wb-thumb-mode-btn {
+    width: 52px;
+    min-height: 36px;
+  }
+}
