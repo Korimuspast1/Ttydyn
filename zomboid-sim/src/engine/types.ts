@@ -1,6 +1,10 @@
-export const MAP_W = 148;
-export const MAP_H = 148;
-export const MAP_SIZE = MAP_W * MAP_H;
+export const CHUNK_SIZE = 32;
+export const CHUNK_SHIFT = 5;
+export const CHUNK_MASK = 31;
+export const CHUNK_AREA = CHUNK_SIZE * CHUNK_SIZE;
+
+// Legacy radar window size (tiles scanned around camera on minimap)
+export const RADAR_SPAN = 160;
 
 // Isometric tile screen geometry (base zoom = 1.0 -> 32x16 classic pixel diamond)
 export const ISO_HALF_W = 16;
@@ -20,7 +24,7 @@ export const FLOOR_WATER = 8;
 export const FLOOR_GRAVEL = 9;
 export const FLOOR_CARPET = 10;
 
-// Structural tile block IDs (on grid cell [x, y])
+// Structural tile block IDs (on infinite grid cell [gx, gy])
 export const STRUCT_NONE = 0;
 export const STRUCT_WALL_BRICK = 1;
 export const STRUCT_WALL_WOOD = 2;
@@ -34,6 +38,15 @@ export const STRUCT_FENCE_WOOD = 9;
 export const STRUCT_FENCE_CHAIN = 10;
 export const STRUCT_SANDBAG = 11;
 export const STRUCT_RUBBLE = 12;
+
+export function isOpaqueWallStruct(st: number): boolean {
+  return (
+    st === STRUCT_WALL_BRICK ||
+    st === STRUCT_WALL_WOOD ||
+    st === STRUCT_WALL_CONCRETE ||
+    st === STRUCT_WALL_STORE
+  );
+}
 
 // Furniture / Interactive Prop IDs
 export const PROP_NONE = 0;
@@ -50,7 +63,6 @@ export const PROP_GAS_PUMP = 10;
 export const PROP_AIRDROP = 11;
 export const PROP_TRASH_BIN = 12;
 
-// Building Archetypes
 export type BuildingKind =
   | 'house'
   | 'police'
@@ -59,6 +71,14 @@ export type BuildingKind =
   | 'warehouse'
   | 'gas_station'
   | 'military';
+
+export interface RoomRect {
+  x0: number;
+  y0: number;
+  w: number;
+  h: number;
+  roofColor: string;
+}
 
 export interface BuildingInfo {
   id: number;
@@ -71,14 +91,17 @@ export interface BuildingInfo {
   roofColor: string;
   wallStyle: number;
   isSafehouse: boolean;
-  safehouseSquad: number;
+  safehouseSquad: number; // 1 = Группа №1 в Полицейском участке!
+  woodStock: number;
+  expansions: number;
+  rooms: RoomRect[];
   survivorsInside: number;
   zombiesInside: number;
   alarmTriggered: boolean;
   alarmTimer: number;
 }
 
-// Weapons
+// Weapons — Deliberate, tactical Project Zomboid cadence (no arcade machine-gun speed!)
 export const WPN_FISTS = 0;
 export const WPN_BAT = 1;
 export const WPN_AXE = 2;
@@ -100,12 +123,12 @@ export interface WeaponSpec {
 }
 
 export const WEAPONS: WeaponSpec[] = [
-  { id: WPN_FISTS, name: 'Толчок / Нож', isGun: false, range: 1.35, damage: 18, cooldown: 0.62, noiseRadius: 4, pellets: 1, spread: 0, knockback: 2.2 },
-  { id: WPN_BAT, name: 'Бейсбольная бита', isGun: false, range: 1.65, damage: 36, cooldown: 0.68, noiseRadius: 6, pellets: 1, spread: 0, knockback: 4.5 },
-  { id: WPN_AXE, name: 'Пожарный топор', isGun: false, range: 1.7, damage: 58, cooldown: 0.78, noiseRadius: 7, pellets: 1, spread: 0, knockback: 3.6 },
-  { id: WPN_PISTOL, name: 'Пистолет M9 (9мм)', isGun: true, range: 13.5, damage: 44, cooldown: 0.44, noiseRadius: 28, pellets: 1, spread: 0.09, knockback: 2.0 },
-  { id: WPN_SHOTGUN, name: 'Дробовик JS-2000', isGun: true, range: 8.8, damage: 34, cooldown: 0.92, noiseRadius: 48, pellets: 5, spread: 0.28, knockback: 5.2 },
-  { id: WPN_RIFLE, name: 'Винтовка M16', isGun: true, range: 18.0, damage: 40, cooldown: 0.19, noiseRadius: 40, pellets: 1, spread: 0.06, knockback: 2.4 },
+  { id: WPN_FISTS, name: 'Толчок / Нож', isGun: false, range: 1.15, damage: 16, cooldown: 1.15, noiseRadius: 4, pellets: 1, spread: 0, knockback: 1.4 },
+  { id: WPN_BAT, name: 'Бейсбольная бита', isGun: false, range: 1.38, damage: 34, cooldown: 1.25, noiseRadius: 6, pellets: 1, spread: 0, knockback: 2.6 },
+  { id: WPN_AXE, name: 'Пожарный топор', isGun: false, range: 1.42, damage: 52, cooldown: 1.45, noiseRadius: 7, pellets: 1, spread: 0, knockback: 2.2 },
+  { id: WPN_PISTOL, name: 'Пистолет M9 (9мм)', isGun: true, range: 12.5, damage: 42, cooldown: 1.30, noiseRadius: 24, pellets: 1, spread: 0.08, knockback: 1.4 },
+  { id: WPN_SHOTGUN, name: 'Дробовик JS-2000', isGun: true, range: 8.2, damage: 30, cooldown: 2.10, noiseRadius: 40, pellets: 5, spread: 0.26, knockback: 3.0 },
+  { id: WPN_RIFLE, name: 'Винтовка M16', isGun: true, range: 15.5, damage: 36, cooldown: 0.68, noiseRadius: 34, pellets: 1, spread: 0.06, knockback: 1.6 },
 ];
 
 // Unit Roles
@@ -131,7 +154,7 @@ export const MOODLE_HUNGRY = 1 << 3;
 export const MOODLE_TIRED = 1 << 4;
 export const MOODLE_HEAVY_LOAD = 1 << 5;
 
-// Vehicles
+// Vehicles — Destructible by zombies, bullets, fire & explosions!
 export interface Vehicle {
   id: number;
   kind: 'sedan' | 'police' | 'ambulance' | 'pickup';
@@ -148,15 +171,27 @@ export interface Vehicle {
   sirenOn: boolean;
   headlightsOn: boolean;
   burning: boolean;
-  exploded: boolean;
+  glassBroken: boolean;
+  hitFlash: number;
+  exploded: boolean; // True = smashed / wrecked / burned out hulk!
 }
 
 export type TimeOfDayMode = 'auto' | 'day' | 'dusk' | 'night';
 export type WeatherMode = 'clear' | 'rain' | 'storm' | 'fog';
 export type RoofMode = 'auto' | 'cut_all' | 'solid';
 
+export const BRUSH_SIZES = [
+  { label: 'S', radius: 1 },
+  { label: 'M', radius: 3 },
+  { label: 'L', radius: 6 },
+  { label: 'XL', radius: 10 },
+];
+
 export type SimToolId =
   | 'inspect'
+  | 'expand_base'
+  | 'barricade'
+  | 'spawn_car'
   | 'spawn_shambler'
   | 'spawn_sprinter'
   | 'spawn_armored_zed'
@@ -171,17 +206,14 @@ export type SimToolId =
   | 'sound_lure'
   | 'molotov'
   | 'propane_bomb'
-  | 'airdrop'
-  | 'barricade'
-  | 'spawn_car';
+  | 'airdrop';
 
-export type ToolCategory = 'all' | 'zombies' | 'survivors' | 'events';
+export type ToolCategory = 'all' | 'zombies' | 'survivors' | 'build' | 'events';
 
 export interface SimToolDef {
   id: SimToolId;
   name: string;
   short: string;
-  icon: string;
   hotkey: string;
   category: Exclude<ToolCategory, 'all'>;
   accent: string;
@@ -191,189 +223,181 @@ export interface SimToolDef {
 export const SIM_TOOLS: SimToolDef[] = [
   {
     id: 'inspect',
-    name: 'Осмотр и Рентген',
+    name: 'Лупа и Паспорт',
     short: 'Осмотр',
-    icon: '🔍',
     hotkey: '1',
     category: 'survivors',
     accent: '#94d2bd',
-    desc: 'Осмотреть паспорт выжившего/зомби (мудлы, укусы, инвентарь) и заглянуть внутрь здания.',
+    desc: 'Осмотреть паспорт выжившего/зомби, отряд, мудлы, инвентарь и срез здания.',
   },
   {
-    id: 'spawn_shambler',
-    name: 'Зомби-шатуны',
-    short: 'Шатуны',
-    icon: '🧟',
+    id: 'expand_base',
+    name: 'Расширить здание / Пристройка',
+    short: 'Пристройка',
     hotkey: '2',
-    category: 'zombies',
-    accent: '#7cb518',
-    desc: 'Классические ходячие мертвецы Project Zomboid. Идут на каждый выстрел и выламывают окна.',
-  },
-  {
-    id: 'spawn_sprinter',
-    name: 'Зомби-бегуны',
-    short: 'Бегуны',
-    icon: '🏃',
-    hotkey: '3',
-    category: 'zombies',
-    accent: '#e63946',
-    desc: 'Смертельно опасные быстрые спринтеры! Мгновенно врываются в дома и рвут оборону.',
-  },
-  {
-    id: 'spawn_armored_zed',
-    name: 'Броне-зомби КЗО',
-    short: 'Спец-зомби',
-    icon: '🪖',
-    hotkey: '4',
-    category: 'zombies',
-    accent: '#6b705c',
-    desc: 'Заражённые солдаты и спецназ в касках и бронежилетах — выдерживают десятки пуль.',
-  },
-  {
-    id: 'horde_wave',
-    name: 'Мега-орда с шоссе',
-    short: 'Мега-орда',
-    icon: '☣',
-    hotkey: '5',
-    category: 'zombies',
-    accent: '#b5e48c',
-    desc: 'Направить огромную волну голодных зомби с окраин прямо на выбранный квартал!',
-  },
-  {
-    id: 'virus_cloud',
-    name: 'Штамм «Нокс»',
-    short: 'Вирус',
-    icon: '🦠',
-    hotkey: '6',
-    category: 'zombies',
-    accent: '#80ed99',
-    desc: 'Скрытое заражение людей! Больные вернутся в убежище к друзьям и обратятся прямо внутри базы.',
-  },
-  {
-    id: 'spawn_survivors',
-    name: 'Отряд выживших',
-    short: 'Выжившие',
-    icon: '🧑',
-    hotkey: '7',
-    category: 'survivors',
-    accent: '#e9c46a',
-    desc: 'Гражданские выжившие: сами лутают дома, ищут еду/оружие и заколачивают окна убежищ досками.',
-  },
-  {
-    id: 'spawn_police',
-    name: 'Патруль полиции',
-    short: 'Полиция',
-    icon: '👮',
-    hotkey: '8',
-    category: 'survivors',
-    accent: '#4cc9f0',
-    desc: 'Офицеры полиции округа Нокс с дробовиками JS-2000 и пистолетами M9.',
-  },
-  {
-    id: 'spawn_soldiers',
-    name: 'Спецназ карантина',
-    short: 'Военные',
-    icon: '🎖',
-    hotkey: '9',
-    category: 'survivors',
-    accent: '#a3b18a',
-    desc: 'Элитный армейский отряд зачистки со штурмовыми винтовками M16 и большим боезапасом.',
-  },
-  {
-    id: 'spawn_medics',
-    name: 'Полевые врачи',
-    short: 'Медики',
-    icon: '🩺',
-    hotkey: '0',
-    category: 'survivors',
-    accent: '#f8f9fa',
-    desc: 'Спасатели с аптечками: перевязывают кровотечения и лечат раненых выживших в бою.',
-  },
-  {
-    id: 'spawn_raiders',
-    name: 'Банда мародёров',
-    short: 'Мародёры',
-    icon: '💀',
-    hotkey: '-',
-    category: 'survivors',
-    accent: '#ff6b6b',
-    desc: 'Враждебные вооружённые бандиты! Атакуют обычных выживших и шумят выстрелами на весь город.',
-  },
-  {
-    id: 'helicopter',
-    name: 'Вертолёт СМИ!',
-    short: 'Вертолёт',
-    icon: '🚁',
-    hotkey: 'H',
-    category: 'events',
-    accent: '#ffd166',
-    desc: 'Культовое мета-событие Project Zomboid! Гул винтов и прожектор стягивают ВСЕХ зомби округа!',
-  },
-  {
-    id: 'sound_lure',
-    name: 'Ревун / Сирена',
-    short: 'Сирена',
-    icon: '🚨',
-    hotkey: 'G',
-    category: 'events',
-    accent: '#ff9f1c',
-    desc: 'Включить мощную полицейскую сирену или сигнализацию — уводит или собирает орды со всех улиц.',
-  },
-  {
-    id: 'molotov',
-    name: 'Коктейль Молотова',
-    short: 'Молотов',
-    icon: '🍾',
-    hotkey: 'F',
-    category: 'events',
-    accent: '#ff5400',
-    desc: 'Разбивает бутылку с горящим бензином! Зомби горят на ходу и поджигают деревянные дома.',
-  },
-  {
-    id: 'propane_bomb',
-    name: 'Взрыв пропана',
-    short: 'Пропан',
-    icon: '🧨',
-    hotkey: 'E',
-    category: 'events',
-    accent: '#d90429',
-    desc: 'Мощнейшая физическая ударная волна: разносит стены, выбивает стёкла на квартал и рвёт ноги зомби!',
-  },
-  {
-    id: 'airdrop',
-    name: 'Военный груз',
-    short: 'Сброс лута',
-    icon: '📦',
-    hotkey: 'Q',
-    category: 'events',
-    accent: '#8ac926',
-    desc: 'Сбросить армейский контейнер с M16, дробовиками, едой, бинтами и досками (с сигнальным дымом!).',
+    category: 'build',
+    accent: '#ffd466',
+    desc: 'Достроить новую жилую комнату-крыло к ближайшему зданию или возвести новый форпост выживших!',
   },
   {
     id: 'barricade',
     name: 'Баррикады и мешки',
     short: 'Укрепить',
-    icon: '🧱',
     hotkey: 'B',
-    category: 'events',
+    category: 'build',
     accent: '#bc6c25',
-    desc: 'Заколотить ближайшие окна досками и выставить мешки с песком для обороны улицы.',
+    desc: 'Заколотить окна досками и выставить прочные мешки с песком (непроходимая коллизия!).',
   },
   {
     id: 'spawn_car',
     name: 'Автомобиль',
     short: 'Машина',
-    icon: '🚗',
     hotkey: 'C',
-    category: 'events',
+    category: 'build',
     accent: '#4895ef',
-    desc: 'Поставить машину (с рабочей сигнализацией, фарами и взрывоопасным бензобаком!).',
+    desc: 'Поставить машину с коллизией и сигнализацией — зомби со временем разгромят её в хлам!',
+  },
+  {
+    id: 'airdrop',
+    name: 'Военный груз',
+    short: 'Груз КЗО',
+    hotkey: 'Q',
+    category: 'build',
+    accent: '#8ac926',
+    desc: 'Сбросить армейский ящик с оружием, едой, брёвнами для стройки и досками.',
+  },
+  {
+    id: 'spawn_shambler',
+    name: 'Зомби-шатуны',
+    short: 'Шатуны',
+    hotkey: '3',
+    category: 'zombies',
+    accent: '#7cb518',
+    desc: 'Медленные, неумолимые мертвецы: выламывают двери, бьют окна и крушат машины.',
+  },
+  {
+    id: 'spawn_sprinter',
+    name: 'Зомби-бегуны',
+    short: 'Бегуны',
+    hotkey: '4',
+    category: 'zombies',
+    accent: '#e63946',
+    desc: 'Опасные быстрые заражённые — стремительно обходят препятствия и штурмуют входы.',
+  },
+  {
+    id: 'spawn_armored_zed',
+    name: 'Броне-зомби КЗО',
+    short: 'Броне-зомби',
+    hotkey: '5',
+    category: 'zombies',
+    accent: '#6b705c',
+    desc: 'Заражённые военные в бронежилетах и касках — сносят баррикады и капоты машин.',
+  },
+  {
+    id: 'horde_wave',
+    name: 'Волна орды',
+    short: 'Орда',
+    hotkey: '6',
+    category: 'zombies',
+    accent: '#b5e48c',
+    desc: 'Поднять крупную орду зомби в выбранном районе открытого мира.',
+  },
+  {
+    id: 'virus_cloud',
+    name: 'Штамм «Нокс»',
+    short: 'Вирус',
+    hotkey: '7',
+    category: 'zombies',
+    accent: '#80ed99',
+    desc: 'Скрытое заражение выживших — больные обратятся в зомби прямо внутри убежища!',
+  },
+  {
+    id: 'spawn_survivors',
+    name: 'Группа выживших',
+    short: 'Выжившие',
+    hotkey: '8',
+    category: 'survivors',
+    accent: '#e9c46a',
+    desc: 'Люди рубят деревья, таскают брёвна, сами расширяют дома пристройками и держат оборону.',
+  },
+  {
+    id: 'spawn_police',
+    name: 'Подкрепление Группы №1',
+    short: 'Полиция',
+    hotkey: '9',
+    category: 'survivors',
+    accent: '#4cc9f0',
+    desc: 'Офицеры полиции Нокс (вливаются в Группу №1, охраняют и расширяют участок).',
+  },
+  {
+    id: 'spawn_soldiers',
+    name: 'Спецназ карантина',
+    short: 'Военные',
+    hotkey: '0',
+    category: 'survivors',
+    accent: '#a3b18a',
+    desc: 'Бойцы карантина с M16: ведут прицельный огонь только по прямой видимости.',
+  },
+  {
+    id: 'spawn_medics',
+    name: 'Полевые медики',
+    short: 'Медики',
+    hotkey: 'M',
+    category: 'survivors',
+    accent: '#f8f9fa',
+    desc: 'Врачи скорой помощи: лечат раненых союзников и перевязывают кровотечения.',
+  },
+  {
+    id: 'spawn_raiders',
+    name: 'Банда мародёров',
+    short: 'Мародёры',
+    hotkey: '-',
+    category: 'survivors',
+    accent: '#ff6b6b',
+    desc: 'Враждебные налётчики — штурмуют чужие базы и ведут перестрелки на улицах.',
+  },
+  {
+    id: 'helicopter',
+    name: 'Вертолёт СМИ',
+    short: 'Вертолёт',
+    hotkey: 'H',
+    category: 'events',
+    accent: '#ffd166',
+    desc: 'Гул винтов и прожектор стягивают зомби со всех окрестных чанков!',
+  },
+  {
+    id: 'sound_lure',
+    name: 'Сирена / Ревун',
+    short: 'Сирена',
+    hotkey: 'G',
+    category: 'events',
+    accent: '#ff9f1c',
+    desc: 'Мощная сирена и автосигнализации — приманивают мертвецов к машинам.',
+  },
+  {
+    id: 'molotov',
+    name: 'Коктейль Молотова',
+    short: 'Молотов',
+    hotkey: 'F',
+    category: 'events',
+    accent: '#ff5400',
+    desc: 'Бутылка с зажигательной смесью — поджигает улицы, орды и деревянные постройки.',
+  },
+  {
+    id: 'propane_bomb',
+    name: 'Взрыв пропана',
+    short: 'Пропан',
+    hotkey: 'E',
+    category: 'events',
+    accent: '#d90429',
+    desc: 'Мощный взрыв: проламывает стены для штурма, мнёт машины и разбрасывает осколки!',
   },
 ];
 
 export interface UnitInspectionData {
   uid: number;
   name: string;
+  squadId: number;
   roleName: string;
   isZombie: boolean;
   hp: number;
@@ -383,6 +407,7 @@ export interface UnitInspectionData {
   food: number;
   bandages: number;
   planks: number;
+  wood: number;
   kills: number;
   taskText: string;
   infectionPct: number;

@@ -2,6 +2,8 @@ import { ZomboidAudio } from '../audio/sfx';
 import { IsoCityRenderer } from '../engine/isoRenderer';
 import { ZomboidSimulation } from '../engine/sim';
 import {
+  BRUSH_SIZES,
+  RADAR_SPAN,
   RoofMode,
   SIM_TOOLS,
   SimToolId,
@@ -11,33 +13,47 @@ import {
   WeatherMode,
 } from '../engine/types';
 import { CityWorld } from '../engine/world';
+import { createZomboidPixelIcon } from './pixelIcons';
 
-const CATEGORIES: { id: ToolCategory; label: string }[] = [
-  { id: 'all', label: '📋 Все (18)' },
-  { id: 'zombies', label: '🧟 Эпидемия Нокс' },
-  { id: 'survivors', label: '🔫 Выжившие и армия' },
-  { id: 'events', label: '🚁 События, базы и огонь' },
+const TABS: { id: ToolCategory; label: string; icon: 'tab_all' | 'tab_build' | 'tab_survivors' | 'tab_zombies' | 'tab_events' }[] = [
+  { id: 'all', label: 'Все силы', icon: 'tab_all' },
+  { id: 'build', label: 'Базы и авто', icon: 'tab_build' },
+  { id: 'survivors', label: 'Люди и отряды', icon: 'tab_survivors' },
+  { id: 'zombies', label: 'Орда и Нокс', icon: 'tab_zombies' },
+  { id: 'events', label: 'События', icon: 'tab_events' },
 ];
 
 export class ZomboidHUD {
   public activeCategory: ToolCategory = 'all';
-  public activeTool: SimToolId = 'horde_wave';
-  public simSpeed = 1;
+  public activeTool: SimToolId = 'expand_base';
+  public simSpeed = 1; // Supports 0.5 (Slow-Mo!), 1, 2, 4
   public paused = false;
+  public touchPanMode = false;
 
   public minimapCanvas!: HTMLCanvasElement;
-  private statsEl!: HTMLElement;
-  private cityBadgeEl!: HTMLElement;
-  private radioEl!: HTMLElement;
-  private inspectorEl!: HTMLElement;
-  private toolsRowEl!: HTMLElement;
-  private catRowEl!: HTMLElement;
+  private coordsEl!: HTMLElement;
+  private bannerEl!: HTMLElement;
+  private bannerTimer: number | null = null;
+  private topLeftEl!: HTMLElement;
+  private restoreTopBtn!: HTMLButtonElement;
+  private dockEl!: HTMLElement;
+  private restoreDockBtn!: HTMLButtonElement;
+  private statsRowEl!: HTMLElement;
+  private versionTagEl!: HTMLElement;
+  private radioListEl!: HTMLElement;
+  private passportEl!: HTMLElement;
+  private infoTitleEl!: HTMLElement;
+  private infoDescEl!: HTMLElement;
+  private tabsStripEl!: HTMLElement;
+  private trayEl!: HTMLElement;
+  private panThumbBtn!: HTMLButtonElement;
+
   private roofBtn!: HTMLButtonElement;
   private timeBtn!: HTMLButtonElement;
   private weatherBtn!: HTMLButtonElement;
-  private waveBtn!: HTMLButtonElement;
   private soundBtn!: HTMLButtonElement;
-  private speedBtns: HTMLButtonElement[] = [];
+  private brushBtns: HTMLButtonElement[] = [];
+  private speedBtns: { el: HTMLButtonElement; val: number }[] = [];
 
   private radioLog: { time: string; msg: string; color: string }[] = [];
 
@@ -51,308 +67,462 @@ export class ZomboidHUD {
   ) {
     this.mount(root);
     this.attachRadio();
-    this.pushRadio(`Экстренное вещание Нокс: вспышка в г. ${this.world.townName}! Выжившие баррикадируют дома.`, '#ffd166');
+    this.pushRadio(
+      `Группа №1 заняла «Полицейский участок ${this.world.townName}»! Строители собирают брёвна для расширения базы.`,
+      '#4cc9f0',
+    );
   }
 
   private attachRadio(): void {
-    this.sim.onRadioBroadcast = (msg: string, color = '#90e0ef') => {
+    this.sim.onRadioBroadcast = (msg: string, color = '#ffd466') => {
       this.pushRadio(msg, color);
+      this.showHeraldBanner(msg, color);
     };
   }
 
-  public pushRadio(msg: string, color = '#90e0ef'): void {
-    this.radioLog.unshift({ time: this.sim.formattedClock, msg, color });
-    if (this.radioLog.length > 12) this.radioLog.length = 12;
-    this.renderRadio();
+  public showHeraldBanner(msg: string, color = '#ffd466'): void {
+    if (!this.bannerEl) return;
+    this.bannerEl.textContent = msg;
+    this.bannerEl.style.color = color;
+    this.bannerEl.classList.add('visible');
+    if (this.bannerTimer) window.clearTimeout(this.bannerTimer);
+    this.bannerTimer = window.setTimeout(() => {
+      this.bannerEl.classList.remove('visible');
+    }, 3400);
   }
 
-  private renderRadio(): void {
-    if (!this.radioEl) return;
-    let html = `<div class="pz-radio-title">📻 93.2 FM • ЭКСТРЕННОЕ РАДИО НОКС</div>`;
-    for (let i = 0; i < Math.min(6, this.radioLog.length); i++) {
-      const r = this.radioLog[i];
-      html += `<div class="pz-radio-entry" style="border-left-color:${r.color}"><b>[${r.time}]</b> ${r.msg}</div>`;
-    }
-    this.radioEl.innerHTML = html;
+  public pushRadio(msg: string, color = '#ffd466'): void {
+    this.radioLog.unshift({ time: this.sim.formattedClock, msg, color });
+    if (this.radioLog.length > 14) this.radioLog.length = 14;
+    if (!this.radioListEl) return;
+    this.radioListEl.innerHTML = this.radioLog
+      .slice(0, 5)
+      .map((r) => `<div class="wb-radio-row" style="border-left-color:${r.color}"><b>[${r.time}]</b> ${r.msg}</div>`)
+      .join('');
   }
 
   public bindNewWorld(world: CityWorld, sim: ZomboidSimulation): void {
     this.world = world;
     this.sim = sim;
     this.attachRadio();
-    this.updateCityBadge();
-    this.pushRadio(`Сгенерирован новый округ: г. ${world.townName} (#${world.seed % 10000})!`, '#80ed99');
+    this.versionTagEl.textContent = `Округ ${world.townName} • Бесконечный мир`;
+    this.pushRadio(`Новый открытый мир: ${world.townName}! Группа №1 развёрнута в Полицейском участке.`, '#80ed99');
   }
 
   private mount(root: HTMLElement): void {
-    // 1. Top Bar
-    const topBar = document.createElement('div');
-    topBar.className = 'pz-top-bar';
+    // 1. WorldBox Event Herald Banner
+    this.bannerEl = document.createElement('div');
+    this.bannerEl.className = 'wb-panel wb-event-banner';
+    root.appendChild(this.bannerEl);
 
-    const titlePanel = document.createElement('div');
-    titlePanel.className = 'pz-panel pz-title-row';
+    // Restore pills when F1/F2 panels collapsed
+    this.restoreTopBtn = document.createElement('button');
+    this.restoreTopBtn.className = 'wb-panel wb-restore-pill wb-restore-top-left wb-panel-hidden';
+    this.restoreTopBtn.textContent = '📊 Показать статистику [F1]';
+    this.restoreTopBtn.onclick = () => this.toggleTopLeft(false);
+    root.appendChild(this.restoreTopBtn);
 
-    const brand = document.createElement('div');
-    brand.className = 'pz-brand';
-    brand.textContent = '☣ PROJECT ZOMBOID: ОКРУГ НОКС 2.5D';
+    this.restoreDockBtn = document.createElement('button');
+    this.restoreDockBtn.className = 'wb-panel wb-restore-pill wb-restore-bottom wb-panel-hidden';
+    this.restoreDockBtn.textContent = '🧰 Открыть панель сил WorldBox [F2]';
+    this.restoreDockBtn.onclick = () => this.toggleBottomDock(false);
+    root.appendChild(this.restoreDockBtn);
 
-    this.cityBadgeEl = document.createElement('div');
-    this.cityBadgeEl.className = 'pz-city-badge';
+    // 2. Top-Left WorldBox Panel
+    this.topLeftEl = document.createElement('div');
+    this.topLeftEl.className = 'wb-panel wb-top-left';
 
-    this.statsEl = document.createElement('div');
-    this.statsEl.className = 'pz-stats-strip';
+    const brandRow = document.createElement('div');
+    brandRow.className = 'wb-brand-row';
 
-    titlePanel.append(brand, this.cityBadgeEl, this.statsEl);
+    const dot = document.createElement('span');
+    dot.className = 'wb-crown-dot';
 
-    // Quick Director Action Strip
-    const controls = document.createElement('div');
-    controls.className = 'pz-controls-row';
+    const title = document.createElement('span');
+    title.className = 'wb-game-title';
+    title.textContent = 'ZOMBOID × WORLDBOX 2.5D';
 
-    const newCityBtn = document.createElement('button');
-    newCityBtn.className = 'pz-btn accent';
-    newCityBtn.textContent = '🎲 Новый случайный город';
-    newCityBtn.onclick = () => {
+    this.versionTagEl = document.createElement('span');
+    this.versionTagEl.className = 'wb-version-tag';
+    this.versionTagEl.textContent = `Округ ${this.world.townName} • Бесконечный мир`;
+
+    const hideTop = document.createElement('button');
+    hideTop.className = 'wb-collapse-btn';
+    hideTop.textContent = 'Скрыть [F1]';
+    hideTop.onclick = () => this.toggleTopLeft(true);
+
+    brandRow.append(dot, title, this.versionTagEl, hideTop);
+
+    this.statsRowEl = document.createElement('div');
+    this.statsRowEl.className = 'wb-stats-row';
+
+    // Quick WorldBox wooden buttons row
+    const quick = document.createElement('div');
+    quick.className = 'wb-quick-buttons';
+
+    const jumpSquad1Btn = document.createElement('button');
+    jumpSquad1Btn.className = 'wb-mini-btn wb-mini-squad1';
+    jumpSquad1Btn.textContent = '🚓 К Группе №1 (Участок)';
+    jumpSquad1Btn.onclick = () => {
       this.audio.unlock();
-      this.audio.playUiClick(620);
+      this.audio.playUiClick(660);
+      this.renderer.focusSquad1PoliceStation();
+    };
+
+    const newWorldBtn = document.createElement('button');
+    newWorldBtn.className = 'wb-mini-btn wb-mini-accent';
+    newWorldBtn.textContent = '🎲 Новый мир';
+    newWorldBtn.onclick = () => {
+      this.audio.unlock();
+      this.audio.playUiClick(580);
       this.onRegenerateCity();
     };
 
-    const dlExeLink = document.createElement('a');
-    dlExeLink.className = 'pz-btn';
-    dlExeLink.style.textDecoration = 'none';
-    dlExeLink.style.borderColor = '#52b788';
-    dlExeLink.style.color = '#d8f3dc';
-    dlExeLink.href = './Zomboid-Knox-PC.exe';
-    dlExeLink.download = 'Zomboid-Knox-PC.exe';
-    dlExeLink.textContent = '⬇ Скачать .EXE';
-
     this.roofBtn = document.createElement('button');
-    this.roofBtn.className = 'pz-btn active';
-    this.roofBtn.textContent = '🏠 Крыши: Авто-срез';
+    this.roofBtn.className = 'wb-mini-btn';
+    this.roofBtn.textContent = '🏠 Крыши: Авто';
     this.roofBtn.onclick = () => {
       const order: RoofMode[] = ['auto', 'cut_all', 'solid'];
       const next = order[(order.indexOf(this.renderer.roofMode) + 1) % order.length];
       this.renderer.roofMode = next;
       this.roofBtn.textContent =
-        next === 'auto' ? '🏠 Крыши: Авто-срез' : next === 'cut_all' ? '🏚 Скрыть ВСЕ крыши' : '🏢 Крыши: Закрыты';
+        next === 'auto' ? '🏠 Крыши: Авто' : next === 'cut_all' ? '🏚 Все открыты' : '🏢 Крыши вкл.';
     };
 
     this.timeBtn = document.createElement('button');
-    this.timeBtn.className = 'pz-btn';
-    this.timeBtn.textContent = '🕒 Сутки: Цикл';
+    this.timeBtn.className = 'wb-mini-btn';
+    this.timeBtn.textContent = '🕒 Цикл суток';
     this.timeBtn.onclick = () => {
       const order: TimeOfDayMode[] = ['auto', 'day', 'dusk', 'night'];
       const next = order[(order.indexOf(this.sim.timeMode) + 1) % order.length];
       this.sim.timeMode = next;
       this.timeBtn.textContent =
-        next === 'auto' ? '🕒 Сутки: Цикл' : next === 'day' ? '☀ День' : next === 'dusk' ? '🌅 Закат' : '🌙 Тёмная ночь';
+        next === 'auto' ? '🕒 Цикл суток' : next === 'day' ? '☀ День' : next === 'dusk' ? '🌅 Закат' : '🌙 Ночь';
     };
 
     this.weatherBtn = document.createElement('button');
-    this.weatherBtn.className = 'pz-btn';
+    this.weatherBtn.className = 'wb-mini-btn';
     this.weatherBtn.textContent = '🌤 Ясно';
     this.weatherBtn.onclick = () => {
       const order: WeatherMode[] = ['clear', 'rain', 'storm', 'fog'];
       const next = order[(order.indexOf(this.sim.weather) + 1) % order.length];
       this.sim.weather = next;
       this.weatherBtn.textContent =
-        next === 'clear' ? '🌤 Ясно' : next === 'rain' ? '🌧 Ливень' : next === 'storm' ? '⛈ Гроза' : '🌫 Густой туман';
-    };
-
-    this.waveBtn = document.createElement('button');
-    this.waveBtn.className = 'pz-btn active';
-    this.waveBtn.textContent = '📡 Волны шума';
-    this.waveBtn.onclick = () => {
-      this.sim.showSoundWaves = !this.sim.showSoundWaves;
-      this.waveBtn.classList.toggle('active', this.sim.showSoundWaves);
+        next === 'clear' ? '🌤 Ясно' : next === 'rain' ? '🌧 Дождь' : next === 'storm' ? '⛈ Гроза' : '🌫 Туман';
     };
 
     this.soundBtn = document.createElement('button');
-    this.soundBtn.className = 'pz-btn active';
+    this.soundBtn.className = 'wb-mini-btn';
     this.soundBtn.textContent = '🔊 Звук';
     this.soundBtn.onclick = () => {
       this.audio.unlock();
       this.audio.muted = !this.audio.muted;
       this.audio.setSuspended(this.audio.muted);
-      this.soundBtn.textContent = !this.audio.muted ? '🔊 Звук' : '🔇 Тихо';
-      this.soundBtn.classList.toggle('active', !this.audio.muted);
+      this.soundBtn.textContent = this.audio.muted ? '🔇 Тихо' : '🔊 Звук';
     };
 
-    controls.append(newCityBtn, dlExeLink, this.roofBtn, this.timeBtn, this.weatherBtn, this.waveBtn, this.soundBtn);
+    const dlExe = document.createElement('a');
+    dlExe.className = 'wb-mini-btn wb-mini-exe';
+    dlExe.href = './Zomboid-Knox-PC.exe';
+    dlExe.download = 'Zomboid-Knox-PC.exe';
+    dlExe.textContent = '⬇ Скачать .EXE';
 
-    // Speed buttons
-    const speeds = [
-      { label: '⏸', spd: 0 },
-      { label: '▶ 1x', spd: 1 },
-      { label: '⏩ 2x', spd: 2 },
-      { label: '⏩ 4x', spd: 4 },
-    ];
-    for (const s of speeds) {
-      const b = document.createElement('button');
-      b.className = `pz-btn${s.spd === 1 ? ' active' : ''}`;
-      b.textContent = s.label;
-      b.onclick = () => {
-        if (s.spd === 0) {
-          this.paused = true;
-        } else {
-          this.paused = false;
-          this.simSpeed = s.spd;
-        }
-        this.speedBtns.forEach((btn, idx) =>
-          btn.classList.toggle('active', speeds[idx].spd === (this.paused ? 0 : this.simSpeed)),
-        );
-      };
-      this.speedBtns.push(b);
-      controls.appendChild(b);
-    }
+    quick.append(jumpSquad1Btn, newWorldBtn, this.roofBtn, this.timeBtn, this.weatherBtn, this.soundBtn, dlExe);
+    this.topLeftEl.append(brandRow, this.statsRowEl, quick);
+    root.appendChild(this.topLeftEl);
 
-    topBar.append(titlePanel, controls);
-    root.appendChild(topBar);
+    // 3. Top-Right Infinite Open World Radar + 93.2 FM Radio
+    const topRight = document.createElement('div');
+    topRight.className = 'wb-panel wb-top-right';
 
-    // 2. Right Minimap & Knox Emergency Radio Feed
-    const rightDock = document.createElement('div');
-    rightDock.className = 'pz-right-dock';
-
-    const mapBox = document.createElement('div');
-    mapBox.className = 'pz-panel pz-minimap-box';
-    const mapHead = document.createElement('div');
-    mapHead.className = 'pz-minimap-header';
-    mapHead.innerHTML = '<span>РАДАР ОКРУГА</span><span>148×148</span>';
+    const radarHdr = document.createElement('div');
+    radarHdr.className = 'wb-slice-header';
+    radarHdr.innerHTML = '<span>РАДАР МИРА</span><span id="wb-coords">17, 16</span>';
+    this.coordsEl = radarHdr.querySelector('#wb-coords')!;
 
     this.minimapCanvas = document.createElement('canvas');
     this.minimapCanvas.id = 'minimap-canvas';
-    this.minimapCanvas.width = 148;
-    this.minimapCanvas.height = 148;
+    this.minimapCanvas.width = 160;
+    this.minimapCanvas.height = 128;
     this.minimapCanvas.addEventListener('pointerdown', (ev) => {
       const rect = this.minimapCanvas.getBoundingClientRect();
-      const nx = (ev.clientX - rect.left) / rect.width;
-      const ny = (ev.clientY - rect.top) / rect.height;
-      this.renderer.camX = nx * 148;
-      this.renderer.camY = ny * 148;
-      this.renderer.clampCamera();
+      const nx = (ev.clientX - rect.left) / rect.width - 0.5;
+      const ny = (ev.clientY - rect.top) / rect.height - 0.5;
+      this.renderer.camX += nx * RADAR_SPAN;
+      this.renderer.camY += ny * RADAR_SPAN;
     });
-    mapBox.append(mapHead, this.minimapCanvas);
 
-    this.radioEl = document.createElement('div');
-    this.radioEl.className = 'pz-panel pz-radio-box';
+    const radioHdr = document.createElement('div');
+    radioHdr.className = 'wb-slice-header';
+    radioHdr.innerHTML = '<span>📻 93.2 FM НОКС</span>';
 
-    rightDock.append(mapBox, this.radioEl);
-    root.appendChild(rightDock);
+    this.radioListEl = document.createElement('div');
+    this.radioListEl.className = 'wb-radio-list';
 
-    // 3. Biometric Unit & Safehouse Inspector
-    this.inspectorEl = document.createElement('div');
-    this.inspectorEl.className = 'pz-panel pz-inspector';
-    root.appendChild(this.inspectorEl);
+    topRight.append(radarHdr, this.minimapCanvas, radioHdr, this.radioListEl);
+    root.appendChild(topRight);
 
-    // 4. Bottom Director Dock
-    const bottomDock = document.createElement('div');
-    bottomDock.className = 'pz-panel pz-bottom-dock';
+    // 4. Right-Edge WorldBox Thumb Controls
+    const thumbDock = document.createElement('div');
+    thumbDock.className = 'wb-panel wb-thumb-dock';
 
-    this.catRowEl = document.createElement('div');
-    this.catRowEl.className = 'pz-cat-tabs';
+    this.panThumbBtn = document.createElement('button');
+    this.panThumbBtn.className = 'wb-thumb-btn';
+    this.panThumbBtn.innerHTML = '<span>🤚</span><small>Камера</small>';
+    this.panThumbBtn.onclick = () => {
+      this.touchPanMode = !this.touchPanMode;
+      this.panThumbBtn.classList.toggle('pan-active', this.touchPanMode);
+    };
 
-    this.toolsRowEl = document.createElement('div');
-    this.toolsRowEl.className = 'pz-tools-row';
+    const zoomIn = document.createElement('button');
+    zoomIn.className = 'wb-thumb-btn';
+    zoomIn.innerHTML = '<span>+</span><small>Ближе</small>';
+    zoomIn.onclick = () => {
+      this.renderer.zoom = Math.min(3.2, this.renderer.zoom * 1.2);
+    };
 
-    bottomDock.append(this.catRowEl, this.toolsRowEl);
-    root.appendChild(bottomDock);
+    const zoomOut = document.createElement('button');
+    zoomOut.className = 'wb-thumb-btn';
+    zoomOut.innerHTML = '<span>−</span><small>Дальше</small>';
+    zoomOut.onclick = () => {
+      this.renderer.zoom = Math.max(0.45, this.renderer.zoom / 1.2);
+    };
 
-    this.updateCityBadge();
-    this.renderCategories();
-    this.renderTools();
+    thumbDock.append(this.panThumbBtn, zoomIn, zoomOut);
+    root.appendChild(thumbDock);
+
+    // 5. Left WorldBox Unit Passport Card
+    this.passportEl = document.createElement('div');
+    this.passportEl.className = 'wb-panel wb-passport';
+    root.appendChild(this.passportEl);
+
+    // 6. Iconic Bottom WorldBox Shelf, Tabs, Brush Selector & Slow/Fast Speed Bar!
+    this.dockEl = document.createElement('div');
+    this.dockEl.className = 'wb-dock-wrapper';
+
+    const infoPlaque = document.createElement('div');
+    infoPlaque.className = 'wb-info-plaque';
+    this.infoTitleEl = document.createElement('span');
+    this.infoTitleEl.className = 'wb-info-title';
+    this.infoDescEl = document.createElement('span');
+    this.infoDescEl.className = 'wb-info-desc';
+    infoPlaque.append(this.infoTitleEl, this.infoDescEl);
+
+    const dockTop = document.createElement('div');
+    dockTop.className = 'wb-dock-top-bar';
+
+    this.tabsStripEl = document.createElement('div');
+    this.tabsStripEl.className = 'wb-tabs-strip';
+
+    const inlineControls = document.createElement('div');
+    inlineControls.className = 'wb-dock-controls-inline';
+
+    // WorldBox Brush Size Group
+    const brushGroup = document.createElement('div');
+    brushGroup.className = 'wb-pill-group';
+    const brushLbl = document.createElement('span');
+    brushLbl.className = 'wb-group-label';
+    brushLbl.textContent = 'Кисть:';
+    brushGroup.appendChild(brushLbl);
+
+    BRUSH_SIZES.forEach((bs, idx) => {
+      const b = document.createElement('button');
+      b.className = `wb-chip-btn${this.sim.brushIndex === idx ? ' active' : ''}`;
+      b.textContent = bs.label;
+      b.onclick = () => {
+        this.sim.brushIndex = idx;
+        this.brushBtns.forEach((btn, k) => btn.classList.toggle('active', k === idx));
+      };
+      this.brushBtns.push(b);
+      brushGroup.appendChild(b);
+    });
+
+    // WorldBox Speed Group (includes 0.5x Slow-Motion!)
+    const speedGroup = document.createElement('div');
+    speedGroup.className = 'wb-pill-group';
+    const speedLbl = document.createElement('span');
+    speedLbl.className = 'wb-group-label';
+    speedLbl.textContent = 'Темп:';
+    speedGroup.appendChild(speedLbl);
+
+    const speeds = [
+      { label: '||', val: 0 },
+      { label: '0.5x', val: 0.5 },
+      { label: '1x', val: 1 },
+      { label: '2x', val: 2 },
+      { label: '4x', val: 4 },
+    ];
+    for (const sp of speeds) {
+      const b = document.createElement('button');
+      b.className = `wb-chip-btn${sp.val === 1 ? ' active' : ''}`;
+      b.textContent = sp.label;
+      b.onclick = () => {
+        if (sp.val === 0) {
+          this.paused = true;
+        } else {
+          this.paused = false;
+          this.simSpeed = sp.val;
+        }
+        this.syncSpeedHighlight();
+      };
+      this.speedBtns.push({ el: b, val: sp.val });
+      speedGroup.appendChild(b);
+    }
+
+    const collapseDock = document.createElement('button');
+    collapseDock.className = 'wb-collapse-btn';
+    collapseDock.textContent = 'Скрыть [F2]';
+    collapseDock.onclick = () => this.toggleBottomDock(true);
+
+    inlineControls.append(brushGroup, speedGroup, collapseDock);
+    dockTop.append(this.tabsStripEl, inlineControls);
+
+    const shelf = document.createElement('div');
+    shelf.className = 'wb-shelf';
+    this.trayEl = document.createElement('div');
+    this.trayEl.className = 'wb-tray';
+    shelf.appendChild(this.trayEl);
+
+    this.dockEl.append(infoPlaque, dockTop, shelf);
+    root.appendChild(this.dockEl);
+
+    this.renderTabs();
+    this.renderPowersTray();
+    this.updateInfoPlaque();
   }
 
-  private updateCityBadge(): void {
-    this.cityBadgeEl.textContent = `📍 г. ${this.world.townName} (#${this.world.seed % 10000}) • ${this.world.buildings.length} зданий • ${this.world.vehicles.length} авто`;
+  public syncSpeedHighlight(): void {
+    const activeVal = this.paused ? 0 : this.simSpeed;
+    for (const item of this.speedBtns) {
+      item.el.classList.toggle('active', item.val === activeVal);
+    }
+  }
+
+  public toggleTopLeft(hide?: boolean): void {
+    const shouldHide = hide ?? !this.topLeftEl.classList.contains('wb-panel-hidden');
+    this.topLeftEl.classList.toggle('wb-panel-hidden', shouldHide);
+    this.restoreTopBtn.classList.toggle('wb-panel-hidden', !shouldHide);
+  }
+
+  public toggleBottomDock(hide?: boolean): void {
+    const shouldHide = hide ?? !this.dockEl.classList.contains('wb-panel-hidden');
+    this.dockEl.classList.toggle('wb-panel-hidden', shouldHide);
+    this.restoreDockBtn.classList.toggle('wb-panel-hidden', !shouldHide);
   }
 
   public selectTool(toolId: SimToolId): void {
     this.activeTool = toolId;
-    this.renderTools();
+    this.renderPowersTray();
+    this.updateInfoPlaque();
   }
 
-  private renderCategories(): void {
-    this.catRowEl.innerHTML = '';
-    for (const c of CATEGORIES) {
-      const b = document.createElement('button');
-      b.className = `pz-cat-btn${this.activeCategory === c.id ? ' active' : ''}`;
-      b.textContent = c.label;
-      b.onclick = () => {
-        this.activeCategory = c.id;
-        this.renderCategories();
-        if (c.id !== 'all') {
-          const firstTool = SIM_TOOLS.find((t) => t.category === c.id);
-          if (firstTool) this.activeTool = firstTool.id;
-        }
-        this.renderTools();
+  private updateInfoPlaque(): void {
+    const def = SIM_TOOLS.find((t) => t.id === this.activeTool) || SIM_TOOLS[0];
+    this.infoTitleEl.textContent = def.name.toUpperCase();
+    this.infoTitleEl.style.color = def.accent;
+    this.infoDescEl.textContent = def.desc;
+  }
+
+  private renderTabs(): void {
+    this.tabsStripEl.innerHTML = '';
+    for (const tab of TABS) {
+      const btn = document.createElement('button');
+      btn.className = `wb-tab-btn${this.activeCategory === tab.id ? ' active' : ''}`;
+      btn.appendChild(createZomboidPixelIcon(tab.icon, 16));
+      const span = document.createElement('span');
+      span.textContent = tab.label;
+      btn.appendChild(span);
+      btn.onclick = () => {
+        this.audio.unlock();
+        this.audio.playUiClick(520);
+        this.activeCategory = tab.id;
+        this.renderTabs();
+        this.renderPowersTray();
       };
-      this.catRowEl.appendChild(b);
+      this.tabsStripEl.appendChild(btn);
     }
   }
 
-  private renderTools(): void {
-    this.toolsRowEl.innerHTML = '';
+  private renderPowersTray(): void {
+    this.trayEl.innerHTML = '';
     for (const tool of SIM_TOOLS) {
       if (this.activeCategory !== 'all' && tool.category !== this.activeCategory) continue;
-      const b = document.createElement('button');
-      b.className = `pz-tool-btn${this.activeTool === tool.id ? ' active' : ''}`;
-      b.title = `${tool.name} — ${tool.desc}`;
-      b.innerHTML = `<span>${tool.icon}</span><span>${tool.short}</span>`;
-      b.onclick = () => {
+
+      const btn = document.createElement('button');
+      btn.className = `wb-power-btn${this.activeTool === tool.id ? ' selected' : ''}`;
+      btn.title = `${tool.name} [${tool.hotkey}] — ${tool.desc}`;
+
+      const hk = document.createElement('span');
+      hk.className = 'wb-hotkey';
+      hk.textContent = tool.hotkey;
+
+      const icon = createZomboidPixelIcon(tool.id, 26);
+
+      const lbl = document.createElement('span');
+      lbl.className = 'wb-power-label';
+      lbl.textContent = tool.short;
+
+      btn.append(hk, icon, lbl);
+      btn.onclick = () => {
         this.audio.unlock();
-        this.audio.playUiClick(500);
-        this.activeTool = tool.id;
-        this.renderTools();
+        this.audio.playUiClick(540);
+        this.touchPanMode = false;
+        this.panThumbBtn.classList.remove('pan-active');
+        this.selectTool(tool.id);
       };
-      this.toolsRowEl.appendChild(b);
+      this.trayEl.appendChild(btn);
     }
   }
 
   public updateTelemetry(hoverUnit: UnitInspectionData | null): void {
-    this.statsEl.innerHTML = `
-      <span class="pz-stat clock">⌚ ${this.sim.formattedClock}</span>
-      <span class="pz-stat surv">🧑 Выжившие: ${this.sim.livingCount}</span>
-      <span class="pz-stat zed">🧟 Орда: ${this.sim.zombieCount}</span>
-      <span class="pz-stat inf">☣ Обратились: ${this.sim.totalInfectedTurned}</span>
-      <span class="pz-stat safe">🛡 Убежища: ${this.sim.safehouseCount}</span>
+    this.coordsEl.textContent = `X:${Math.round(this.renderer.camX)} Y:${Math.round(this.renderer.camY)}`;
+
+    this.statsRowEl.innerHTML = `
+      <span>⌚ <b>${this.sim.formattedClock}</b></span>
+      <span class="wb-sep">|</span>
+      <span style="color:#99e9f2">🚓 Группа №1: <b>${this.sim.squad1Count}</b></span>
+      <span class="wb-sep">|</span>
+      <span>🧑 Выжившие: <b>${this.sim.livingCount}</b></span>
+      <span class="wb-sep">|</span>
+      <span style="color:#ff9c92">🧟 Зомби: <b>${this.sim.zombieCount}</b></span>
+      <span class="wb-sep">|</span>
+      <span>🏗 Пристройки: <b>${this.sim.totalExpansionsBuilt}</b></span>
+      <span class="wb-sep">|</span>
+      <span>🚗 Разбито авто: <b>${this.sim.carsWreckedCount}</b></span>
     `;
 
     if (!hoverUnit) {
-      this.inspectorEl.classList.remove('visible');
+      this.passportEl.classList.remove('visible');
       return;
     }
 
-    this.inspectorEl.classList.add('visible');
-    const zed = hoverUnit.isZombie;
+    this.passportEl.classList.add('visible');
     const hpPct = Math.max(0, Math.min(100, Math.round((hoverUnit.hp / Math.max(1, hoverUnit.maxHp)) * 100)));
+    const sqBadge =
+      !hoverUnit.isZombie && hoverUnit.squadId > 0
+        ? hoverUnit.squadId === 1
+          ? '<span style="color:#4cc9f0">[ГРУППА №1]</span> '
+          : `<span style="color:#ffd466">[Отряд #${hoverUnit.squadId}]</span> `
+        : '';
 
-    this.inspectorEl.innerHTML = `
-      <div class="pz-insp-head">
-        <span>${zed ? '🧟' : '🧑'} ${hoverUnit.name}</span>
+    this.passportEl.innerHTML = `
+      <div class="wb-pass-title">
+        <span>${sqBadge}${hoverUnit.name}</span>
         <span>${hoverUnit.hp}/${hoverUnit.maxHp} HP</span>
       </div>
-      <div class="pz-insp-sub">${hoverUnit.roleName} • ${hoverUnit.taskText}</div>
-      <div class="pz-bar-wrap"><div class="pz-bar-fill ${zed ? 'zed' : ''}" style="width:${hpPct}%"></div></div>
+      <div class="wb-pass-line">${hoverUnit.roleName} • <b>${hoverUnit.taskText}</b></div>
+      <div class="wb-bar-bg"><div class="wb-bar-fill ${hoverUnit.isZombie ? 'zed' : ''}" style="width:${hpPct}%"></div></div>
       ${
-        !zed
-          ? `<div class="pz-insp-sub">🔫 ${hoverUnit.weaponName} (патроны: ${hoverUnit.ammo}) • 💀 Убито: ${hoverUnit.kills}</div>
-             <div class="pz-insp-sub">🥫 Еда: ${hoverUnit.food} • 🪵 Доски: ${hoverUnit.planks} • 🩹 Бинты: ${hoverUnit.bandages}</div>
-             <div class="pz-insp-sub">🏠 Убежище: ${hoverUnit.safehouseName || 'В поиске дома'}</div>`
-          : `<div class="pz-insp-sub">💀 Штамм Нокс • Идёт на выстрелы, сирены и свет фонарей</div>`
-      }
-      ${
-        !zed && hoverUnit.infectionPct > 0
-          ? `<div class="pz-insp-sub" style="color:#a7c957">☣ Инкубация вируса Нокс: ${hoverUnit.infectionPct}%</div>
-             <div class="pz-bar-wrap"><div class="pz-bar-fill virus" style="width:${hoverUnit.infectionPct}%"></div></div>`
-          : ''
+        !hoverUnit.isZombie
+          ? `<div class="wb-pass-line">Оружие: <b>${hoverUnit.weaponName}</b> (патр: <b>${hoverUnit.ammo}</b>) • Убито: <b>${hoverUnit.kills}</b></div>
+             <div class="wb-pass-line">🪵 Брёвна: <b>${hoverUnit.wood}</b> • Доски: <b>${hoverUnit.planks}</b> • 🥫 Еда: <b>${hoverUnit.food}</b> • 🩹 Бинты: <b>${hoverUnit.bandages}</b></div>
+             <div class="wb-pass-line">База: <b>${hoverUnit.safehouseName || 'Кочует по открытому миру'}</b></div>`
+          : `<div class="wb-pass-line">Ломает двери, окна и машины • Не может пройти сквозь стены</div>`
       }
       ${
         hoverUnit.moodles.length > 0
-          ? `<div class="pz-moodles">${hoverUnit.moodles
-              .map(
-                (m) =>
-                  `<span class="pz-moodle-tag" style="border-color:${m.color};color:#fff">${m.label}</span>`,
-              )
+          ? `<div class="wb-moodles-row">${hoverUnit.moodles
+              .map((m) => `<span class="wb-moodle-pill" style="border-color:${m.color};color:${m.color}">${m.label}</span>`)
               .join('')}</div>`
           : ''
       }
