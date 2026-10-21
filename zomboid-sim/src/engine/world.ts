@@ -19,10 +19,15 @@ import {
   FLOOR_WOOD,
   isOpaqueWallStruct,
   PROP_BED,
+  PROP_BARREL_FIRE,
+  PROP_CORPSE,
   PROP_CRATE,
   PROP_FRIDGE,
   PROP_GAS_PUMP,
+  PROP_GENERATOR,
   PROP_GUN_LOCKER,
+  PROP_HYDRANT,
+  PROP_LOG_PILE,
   PROP_MED_CABINET,
   PROP_NONE,
   PROP_SHELF,
@@ -30,6 +35,7 @@ import {
   PROP_TRASH_BIN,
   PROP_TREE_OAK,
   PROP_TREE_PINE,
+  PROP_WORKBENCH,
   STRUCT_DOOR_CLOSED,
   STRUCT_DOOR_OPEN,
   STRUCT_FENCE_CHAIN,
@@ -777,7 +783,7 @@ export class CityWorld {
           }
         } else if (kind === 'warehouse') {
           if (x % 3 === 0 && y % 2 === 1) {
-            this.setProp(x, y, PROP_CRATE);
+            this.setProp(x, y, x === x0 + 3 ? PROP_WORKBENCH : x === x0 + 6 ? PROP_LOG_PILE : PROP_CRATE);
             this.setLoot(x, y, 8);
           }
         } else if (nearWall && rng() < 0.30) {
@@ -788,9 +794,24 @@ export class CityWorld {
       }
     }
 
-    // Exterior trash bin beside building
+    // Exterior props around buildings: trash bin, emergency generator, burning barrel, log pile & sidewalk hydrant!
     if (this.getStruct(x0 - 1, y0 + 1) === STRUCT_NONE) {
       this.setProp(x0 - 1, y0 + 1, PROP_TRASH_BIN);
+    }
+    if (isSafehouse) {
+      if (this.getStruct(x0 + w, y0 + 2) === STRUCT_NONE) {
+        this.setProp(x0 + w, y0 + 2, PROP_GENERATOR);
+      }
+      if (this.getStruct(x0 - 2, y0 + h - 2) === STRUCT_NONE) {
+        this.setProp(x0 - 2, y0 + h - 2, PROP_BARREL_FIRE);
+      }
+      if (this.getStruct(x0 + w, y0 + 4) === STRUCT_NONE) {
+        this.setProp(x0 + w, y0 + 4, PROP_LOG_PILE);
+        this.setLoot(x0 + w, y0 + 4, 8);
+      }
+    }
+    if (this.getStruct(x0 + 2, y0 - 2) === STRUCT_NONE && this.getFloor(x0 + 2, y0 - 2) === FLOOR_SIDEWALK) {
+      this.setProp(x0 + 2, y0 - 2, PROP_HYDRANT);
     }
 
     return id;
@@ -909,13 +930,13 @@ export class CityWorld {
         // Furnish new room according to expansion specialty!
         const expType = b.expansions % 4;
         const propType =
-          expType === 0 ? PROP_BED : expType === 1 ? PROP_GUN_LOCKER : expType === 2 ? PROP_MED_CABINET : PROP_FRIDGE;
+          expType === 0 ? PROP_BED : expType === 1 ? PROP_GUN_LOCKER : expType === 2 ? PROP_MED_CABINET : PROP_WORKBENCH;
         const roleTitle =
-          expType === 0 ? 'Казарма' : expType === 1 ? 'Оружейная' : expType === 2 ? 'Лазарет' : 'Склад провизии';
+          expType === 0 ? 'Казарма' : expType === 1 ? 'Оружейная' : expType === 2 ? 'Лазарет' : 'Мастерская';
 
         this.setProp(nx0 + 1, ny0 + 1, propType);
         this.setLoot(nx0 + 1, ny0 + 1, 8);
-        this.setProp(nx0 + rw - 2, ny0 + 1, PROP_CRATE);
+        this.setProp(nx0 + rw - 2, ny0 + 1, expType === 3 ? PROP_LOG_PILE : PROP_CRATE);
         this.setLoot(nx0 + rw - 2, ny0 + 1, 7);
 
         // Protective sandbag corner outside new wing!

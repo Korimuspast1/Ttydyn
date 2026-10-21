@@ -29,6 +29,7 @@ import {
   MOODLE_BITTEN,
   MOODLE_BLEEDING,
   MOODLE_PANIC,
+  PROP_BARREL_FIRE,
   PROP_NONE,
   PROP_STREETLIGHT,
   RADAR_SPAN,
@@ -262,6 +263,14 @@ export class IsoCityRenderer {
       }
     }
 
+    // Update Spatial Audio Listener & Automatic Cutaway on Possessed Player Character!
+    this.sim.sfx.setListener(this.camX, this.camY);
+    const ctrlIdx = this.sim.getControlledIndex();
+    if (ctrlIdx >= 0) {
+      const pb = this.world.getBuildingId(Math.floor(this.sim.ux[ctrlIdx]), Math.floor(this.sim.uy[ctrlIdx]));
+      if (pb >= 0) this.cutBuildingSet.add(pb);
+    }
+
     // 2. Compute Tight Isometric Frustum Bounds around Unbounded Camera
     const corners = [
       this.screenToWorld(-64, -96),
@@ -352,7 +361,9 @@ export class IsoCityRenderer {
       }
     }
 
-    // ══ PASS B: BACK-TO-FRONT 2.5D WALLS, WINDOWS, DOORS, FURNITURE, DESTRUCTIBLE CARS & UNITS ══
+    // ══ PASS B: BACK-TO-FRONT 2.5D WALLS, WINDOWS, DOORS, FURNITURE, ANIMATED FIRE, CARS & UNITS ══
+    let visibleFireSum = 0;
+
     for (let sum = x0 + y0; sum <= x1 + y1; sum++) {
       const gxStart = Math.max(x0, sum - y1);
       const gxEnd = Math.min(x1, sum - y0);
@@ -373,7 +384,6 @@ export class IsoCityRenderer {
         if (st !== STRUCT_NONE) {
           let isFrontCutWall = false;
           if (bId >= 0 && bCut) {
-            // Check whether tile [gx-1, gy] or [gx, gy-1] belongs to the same building -> front/interior wall!
             const backLeftInside = this.world.getBuildingId(gx - 1, gy) === bId;
             const backTopInside = this.world.getBuildingId(gx, gy - 1) === bId;
             if (backLeftInside || backTopInside) {
@@ -383,19 +393,48 @@ export class IsoCityRenderer {
           this.drawIsoStructure(ctx, sx, sy, hw, hh, wallPx, st, this.world.getBarricade(gx, gy), isFrontCutWall);
         }
 
-        // 2. Furniture, Loot Containers, Trees & Streetlights
+        // 2. Furniture, Loot Containers, Trees, Fire Barrels, Hydrants, Workbenches & Corpses
         const propId = this.world.getProp(gx, gy);
         if (propId !== PROP_NONE && (bId < 0 || bCut)) {
           const pSpr = this.atlas.getPropSprite(propId);
-          const scale = z * (propId <= 2 ? 1.18 : 0.92);
+          const scale = z * (propId <= 2 ? 1.18 : 0.94);
           const dw = Math.max(8, Math.round(pSpr.width * scale));
           const dh = Math.max(8, Math.round(pSpr.height * scale));
           ctx.drawImage(pSpr, Math.round(sx - dw * 0.5), Math.round(sy + hh * 1.35 - dh), dw, dh);
+
+          // Live flickering flame tongues above burning oil barrels!
+          if (propId === PROP_BARREL_FIRE) {
+            visibleFireSum += 0.25;
+            const ff = Math.floor(timeSec * 11 + gx * 3 + gy * 7) % 6;
+            const fSpr = this.atlas.getFireSprite(ff, false);
+            const fw = Math.max(8, Math.round(fSpr.width * z * 0.65));
+            const fh = Math.max(8, Math.round(fSpr.height * z * 0.65));
+            ctx.drawImage(fSpr, Math.round(sx - fw * 0.5), Math.round(sy + hh * 1.35 - dh - fh * 0.45), fw, fh);
+          }
 
           if (this.world.getLoot(gx, gy) > 0 && propId > 2 && z > 0.95) {
             ctx.fillStyle = propId === 11 ? '#8ac926' : 'rgba(233, 196, 106, 0.78)';
             ctx.fillRect(Math.round(sx - 2), Math.round(sy + hh * 1.35 - dh - 4), 4, 2);
           }
+        }
+
+        // 2.5 REAL MULTI-FRAME ANIMATED PIXEL FIRE SPRITES ON BURNING TILES!
+        const tileFire = this.world.getFire(gx, gy);
+        if (tileFire > 0.08) {
+          visibleFireSum += tileFire;
+          // Warm ground ember glow underneath flame tongues
+          ctx.fillStyle = `rgba(255, 115, 20, ${Math.min(0.42, tileFire * 0.45)})`;
+          ctx.beginPath();
+          ctx.ellipse(sx, sy + hh, hw * 0.72, hh * 0.72, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          const tall = tileFire > 0.52;
+          const fFrame = Math.floor(timeSec * 11.5 + gx * 5 + gy * 13) % 6;
+          const fSpr = this.atlas.getFireSprite(fFrame, tall);
+          const fScale = z * (0.75 + Math.min(0.55, tileFire * 0.55));
+          const fw = Math.max(10, Math.round(fSpr.width * fScale));
+          const fh = Math.max(12, Math.round(fSpr.height * fScale));
+          ctx.drawImage(fSpr, Math.round(sx - fw * 0.5), Math.round(sy + hh * 1.28 - fh), fw, fh);
         }
 
         // 3. Vehicles & Characters in this tile
@@ -410,6 +449,16 @@ export class IsoCityRenderer {
             const dw = Math.max(16, Math.round(cSpr.width * z * 1.05));
             const dh = Math.max(12, Math.round(cSpr.height * z * 1.05));
             ctx.drawImage(cSpr, Math.round(vs.sx - dw * 0.5 + shakeX), Math.round(vs.sy + hh * 0.5 - dh * 0.72), dw, dh);
+
+            // Animated flames leaping off burning vehicles!
+            if (v.burning) {
+              visibleFireSum += 0.6;
+              const vf = Math.floor(timeSec * 12 + v.id * 3) % 6;
+              const fSpr = this.atlas.getFireSprite(vf, true);
+              const fw = Math.max(12, Math.round(fSpr.width * z * 0.95));
+              const fh = Math.max(14, Math.round(fSpr.height * z * 0.95));
+              ctx.drawImage(fSpr, Math.round(vs.sx - fw * 0.5), Math.round(vs.sy - fh * 0.78), fw, fh);
+            }
 
             // Car Durability Bar when zombies / bullets damage the car!
             if (!v.exploded && v.hp < v.maxHp) {
@@ -435,6 +484,9 @@ export class IsoCityRenderer {
         }
       }
     }
+
+    // Drive real studio crackling fire audio loop smoothly from visible flame count!
+    this.sim.sfx.updateFireAmbience(Math.min(1, visibleFireSum * 0.16));
 
     // ══ PASS C: MULTI-WING BUILDING ROOFS (Closed Mode) & SAFEHOUSE / ГРУППА №1 PLAQUES ══
     for (let b = 0; b < this.world.buildings.length; b++) {
@@ -517,17 +569,63 @@ export class IsoCityRenderer {
         ctx.fillStyle = '#bc6c25';
         ctx.fillRect(Math.round(ps.sx), Math.round(ps.sy), Math.max(2, Math.round(3 * z)), Math.max(2, Math.round(2 * z)));
       } else if (kind === PART_FIRE || kind === PART_SPARK) {
-        ctx.fillStyle = alpha > 0.55 ? '#ffbe0b' : '#fb5607';
-        const s = Math.max(2, Math.round((kind === PART_FIRE ? 5 : 3) * z));
-        ctx.fillRect(Math.round(ps.sx - s * 0.5), Math.round(ps.sy - s * 0.5), s, s);
+        if (kind === PART_FIRE) {
+          const ff = Math.floor((1 - alpha) * 6) % 6;
+          const fSpr = this.atlas.getFireSprite(ff, false);
+          const s = Math.max(8, Math.round(12 * z));
+          ctx.drawImage(fSpr, Math.round(ps.sx - s * 0.5), Math.round(ps.sy - s * 0.8), s, s);
+        } else {
+          ctx.fillStyle = alpha > 0.55 ? '#ffbe0b' : '#fb5607';
+          const s = Math.max(2, Math.round(3 * z));
+          ctx.fillRect(Math.round(ps.sx - s * 0.5), Math.round(ps.sy - s * 0.5), s, s);
+        }
       } else if (kind === PART_FLARE) {
         ctx.fillStyle = `rgba(128, 237, 153, ${alpha * 0.55})`;
         const s = Math.max(4, Math.round(7 * z));
         ctx.fillRect(Math.round(ps.sx - s * 0.5), Math.round(ps.sy - s * 0.5), s, s);
       } else if (kind === PART_SMOKE) {
-        ctx.fillStyle = `rgba(38, 42, 46, ${alpha * 0.48})`;
-        const s = Math.max(4, Math.round(8 * z * (1.4 - alpha * 0.5)));
-        ctx.fillRect(Math.round(ps.sx - s * 0.5), Math.round(ps.sy - s * 0.5), s, s);
+        const sf = Math.min(3, Math.floor((1 - alpha) * 4));
+        const sSpr = this.atlas.getSmokeSprite(sf);
+        const s = Math.max(8, Math.round(16 * z * (1.25 - alpha * 0.35)));
+        ctx.save();
+        ctx.globalAlpha = Math.min(0.82, alpha * 0.9);
+        ctx.drawImage(sSpr, Math.round(ps.sx - s * 0.5), Math.round(ps.sy - s * 0.5), s, s);
+        ctx.restore();
+      }
+    }
+
+    // ══ MULTI-FRAME PIXEL FX FLIPBOOKS (EXPLOSIONS, MUZZLE FLASHES, SLASH ARCS & SMOKE) ══
+    for (const fx of this.sim.fxBursts) {
+      const t = Math.max(0, Math.min(0.999, fx.age / Math.max(0.01, fx.duration)));
+      const fp = this.worldToScreen(fx.x, fx.y, fx.z);
+      if (fp.sx < -90 || fp.sx > lw + 90 || fp.sy < -90 || fp.sy > lh + 90) continue;
+
+      if (fx.kind === 'explosion') {
+        const spr = this.atlas.getExplosionSprite(Math.floor(t * 6));
+        const sz = Math.max(24, Math.round(spr.width * z * fx.scale));
+        ctx.drawImage(spr, Math.round(fp.sx - sz * 0.5), Math.round(fp.sy - sz * 0.62), sz, sz);
+      } else if (fx.kind === 'smoke_puff') {
+        const spr = this.atlas.getSmokeSprite(Math.floor(t * 4));
+        const sz = Math.max(14, Math.round(spr.width * z * fx.scale * (0.9 + t * 0.5)));
+        ctx.save();
+        ctx.globalAlpha = Math.max(0.15, (1 - t) * 0.78);
+        ctx.drawImage(spr, Math.round(fp.sx - sz * 0.5), Math.round(fp.sy - sz * 0.5), sz, sz);
+        ctx.restore();
+      } else {
+        const spr =
+          fx.kind === 'muzzle'
+            ? this.atlas.getMuzzleFlashSprite(Math.floor(t * 3))
+            : this.atlas.getSlashSprite(Math.floor(t * 3), fx.tint === 'zombie');
+        const sz = Math.max(12, Math.round(spr.width * z * fx.scale));
+        const isoAng = Math.atan2(
+          (Math.cos(fx.angle) + Math.sin(fx.angle)) * hh,
+          (Math.cos(fx.angle) - Math.sin(fx.angle)) * hw,
+        );
+        ctx.save();
+        ctx.translate(fp.sx, fp.sy);
+        ctx.rotate(isoAng);
+        ctx.drawImage(spr, -sz * 0.5, -sz * 0.5, sz, sz);
+        ctx.restore();
       }
     }
 
@@ -585,17 +683,72 @@ export class IsoCityRenderer {
       this.renderNightLightmap(lw, lh, dark, timeSec, x0, x1, y0, y1);
     }
 
-    // WorldBox Brush Isometric Cursor Highlight
-    const cs = this.worldToScreen(hoverGx + 0.5, hoverGy + 0.5, 0.05);
-    ctx.strokeStyle = activeTool.includes('zombie') || activeTool.includes('horde') ? '#80ed99' : '#ffd466';
-    ctx.lineWidth = 1.6;
-    ctx.beginPath();
-    ctx.moveTo(cs.sx, cs.sy - hh);
-    ctx.lineTo(cs.sx + hw, cs.sy);
-    ctx.lineTo(cs.sx, cs.sy + hh);
-    ctx.lineTo(cs.sx - hw, cs.sy);
-    ctx.closePath();
-    ctx.stroke();
+    // WorldBox Brush Highlight OR Tactical Direct-Control Aiming Crosshair & Wall-Stop Ray!
+    if (ctrlIdx >= 0) {
+      const px0 = this.sim.ux[ctrlIdx];
+      const py0 = this.sim.uy[ctrlIdx];
+      const pStart = this.worldToScreen(px0, py0, 0.48);
+
+      // Raycast along line of fire to show exact wall-blocking point!
+      const dxR = cursorWx - px0;
+      const dyR = cursorWy - py0;
+      const distR = Math.hypot(dxR, dyR);
+      const stepsR = Math.max(1, Math.min(120, Math.ceil(distR / 0.2)));
+      let hitX = cursorWx;
+      let hitY = cursorWy;
+      let blockedByWall = false;
+      for (let s = 1; s <= stepsR; s++) {
+        const tx = px0 + (dxR * s) / stepsR;
+        const ty = py0 + (dyR * s) / stepsR;
+        if (this.world.blocksBulletsAndSight(Math.floor(tx), Math.floor(ty))) {
+          hitX = tx;
+          hitY = ty;
+          blockedByWall = true;
+          break;
+        }
+      }
+      const pHit = this.worldToScreen(hitX, hitY, 0.48);
+      const pAim = this.worldToScreen(cursorWx, cursorWy, 0.08);
+
+      ctx.save();
+      ctx.setLineDash([5, 5]);
+      ctx.strokeStyle = isZombieRole(this.sim.uRole[ctrlIdx])
+        ? 'rgba(128, 237, 153, 0.65)'
+        : blockedByWall
+          ? 'rgba(255, 107, 107, 0.72)'
+          : 'rgba(255, 212, 102, 0.75)';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(pStart.sx, pStart.sy);
+      ctx.lineTo(pHit.sx, pHit.sy);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      if (blockedByWall) {
+        ctx.fillStyle = '#ff4d6d';
+        ctx.fillRect(Math.round(pHit.sx - 3), Math.round(pHit.sy - 3), 6, 6);
+      }
+
+      // Crisp Pixel Crosshair Reticle at Mouse Cursor!
+      const rCol = isZombieRole(this.sim.uRole[ctrlIdx]) ? '#80ed99' : '#ffd466';
+      ctx.strokeStyle = rCol;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(Math.round(pAim.sx - 7), Math.round(pAim.sy - 7), 14, 14);
+      ctx.fillStyle = rCol;
+      ctx.fillRect(Math.round(pAim.sx - 1), Math.round(pAim.sy - 1), 2, 2);
+      ctx.restore();
+    } else {
+      const cs = this.worldToScreen(hoverGx + 0.5, hoverGy + 0.5, 0.05);
+      ctx.strokeStyle = activeTool.includes('zombie') || activeTool.includes('horde') ? '#80ed99' : '#ffd466';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(cs.sx, cs.sy - hh);
+      ctx.lineTo(cs.sx + hw, cs.sy);
+      ctx.lineTo(cs.sx, cs.sy + hh);
+      ctx.lineTo(cs.sx - hw, cs.sy);
+      ctx.closePath();
+      ctx.stroke();
+    }
   }
 
   private drawIsoStructure(
@@ -705,11 +858,13 @@ export class IsoCityRenderer {
 
     const screenVx = Math.cos(this.sim.uAngle[i]) - Math.sin(this.sim.uAngle[i]);
     const flip = screenVx < 0;
-    const stepFrame = Math.sin(this.sim.uWalkPhase[i]) >= 0 ? 0 : 1;
+    const stepFrame = Math.floor(this.sim.uWalkPhase[i]) & 3;
+    const attackPose = this.sim.uAttackAnim[i] > 0 ? 1 : 0;
     const sick = !zed && this.sim.uInfection[i] > 0.05;
+    const isCtrl = this.sim.controlledUid > 0 && this.sim.uUid[i] === this.sim.controlledUid;
 
-    const spr = this.atlas.getUnitSprite(role, this.sim.uVariant[i], this.sim.uWeapon[i], stepFrame, sick, flip);
-    const scale = z * 0.98;
+    const spr = this.atlas.getUnitSprite(role, this.sim.uVariant[i], this.sim.uWeapon[i], stepFrame, sick, flip, attackPose);
+    const scale = z * (isCtrl ? 1.08 : 0.98);
     const dw = Math.max(10, Math.round(spr.width * scale));
     const dh = Math.max(10, Math.round(spr.height * scale));
 
@@ -717,15 +872,25 @@ export class IsoCityRenderer {
     ctx.fillStyle = 'rgba(0, 0, 0, 0.36)';
     ctx.fillRect(Math.round(pos.sx - dw * 0.28), Math.round(pos.sy + 2 * z), Math.max(4, Math.round(dw * 0.56)), Math.max(2, Math.round(4 * z)));
 
-    // Squad #1 Blue-Gold Ring on ground under members of Группа №1!
-    if (!zed && this.sim.uSquad[i] === 1) {
+    // Glowing Emerald-Gold Ring beneath Possessed Player Character!
+    if (isCtrl) {
+      const pulse = 1 + Math.sin(timeSec * 6) * 0.12;
+      ctx.save();
+      ctx.strokeStyle = zed ? '#80ed99' : '#ffd466';
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.ellipse(pos.sx, pos.sy + 2 * z, dw * 0.48 * pulse, Math.max(4, 5.5 * z * pulse), 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    } else if (!zed && this.sim.uSquad[i] === 1) {
+      // Squad #1 Blue-Gold Ring on ground under members of Группа №1!
       ctx.strokeStyle = 'rgba(76, 201, 240, 0.72)';
       ctx.lineWidth = 1.5;
       ctx.strokeRect(Math.round(pos.sx - dw * 0.34), Math.round(pos.sy), Math.max(6, Math.round(dw * 0.68)), Math.max(3, Math.round(5 * z)));
     }
 
-    const isSel = this.sim.uUid[i] === this.sim.selectedUid && this.sim.selectedUid > 0;
-    if (isSel) {
+    const isSel = (this.sim.uUid[i] === this.sim.selectedUid && this.sim.selectedUid > 0) || isCtrl;
+    if (isSel && !isCtrl) {
       ctx.strokeStyle = '#ffd466';
       ctx.lineWidth = 2;
       ctx.strokeRect(Math.round(pos.sx - dw * 0.5) - 2, Math.round(pos.sy - dh) - 3, dw + 4, dh + 6);
@@ -733,16 +898,36 @@ export class IsoCityRenderer {
 
     ctx.drawImage(spr, Math.round(pos.sx - dw * 0.5), Math.round(pos.sy - dh + 4 * z), dw, dh);
 
-    // Health bar
+    // Animated Fire Sprite wrapped around Burning Units!
+    if (this.sim.uBurning[i] > 0) {
+      const bf = Math.floor(timeSec * 12 + i) % 6;
+      const fSpr = this.atlas.getFireSprite(bf, false);
+      const fw = Math.max(10, Math.round(fSpr.width * z * 0.8));
+      const fh = Math.max(10, Math.round(fSpr.height * z * 0.8));
+      ctx.drawImage(fSpr, Math.round(pos.sx - fw * 0.5), Math.round(pos.sy - fh + 3 * z), fw, fh);
+    }
+
+    // Health bar (+ Stamina bar when Controlled by Player!)
     const hpRatio = this.sim.uHp[i] / Math.max(1, this.sim.uMaxHp[i]);
     if (hpRatio < 0.98 || isSel) {
-      const bw = Math.max(12, Math.round(18 * z));
+      const bw = Math.max(14, Math.round((isCtrl ? 24 : 18) * z));
       const bx = Math.round(pos.sx - bw * 0.5);
-      const by = Math.round(pos.sy - dh - 3 * z);
+      const by = Math.round(pos.sy - dh - (isCtrl ? 6 : 3) * z);
       ctx.fillStyle = '#111315';
-      ctx.fillRect(bx - 1, by - 1, bw + 2, 4);
+      ctx.fillRect(bx - 1, by - 1, bw + 2, isCtrl ? 7 : 4);
       ctx.fillStyle = zed ? '#e63946' : '#52b788';
       ctx.fillRect(bx, by, Math.max(1, Math.round(bw * hpRatio)), 2);
+      if (isCtrl) {
+        ctx.fillStyle = '#4cc9f0';
+        ctx.fillRect(bx, by + 3, Math.max(1, Math.round(bw * this.sim.uStamina[i])), 2);
+      }
+    }
+
+    if (isCtrl) {
+      ctx.font = `700 ${Math.max(10, Math.round(10.5 * z))}px "Pixelify Sans", monospace`;
+      ctx.fillStyle = zed ? '#80ed99' : '#ffd466';
+      ctx.fillText(zed ? '★ ВЫ (ЗОМБИ)' : '★ ВЫ', Math.round(pos.sx - 12 * z), Math.round(pos.sy - dh - 9 * z));
+      return;
     }
 
     // Crisp ASCII/Vector Overhead Status Tag (No Tofu Boxes!)
@@ -817,6 +1002,9 @@ export class IsoCityRenderer {
         if (this.world.getProp(gx, gy) === PROP_STREETLIGHT) {
           const p = this.worldToScreen(gx + 0.5, gy + 0.5, 0.2);
           addGlow(p.sx, p.sy, 115 * this.zoom, 'rgba(255, 214, 130, 0.62)');
+        } else if (this.world.getProp(gx, gy) === PROP_BARREL_FIRE) {
+          const p = this.worldToScreen(gx + 0.5, gy + 0.5, 0.25);
+          addGlow(p.sx, p.sy, 88 * this.zoom, 'rgba(255, 132, 38, 0.68)');
         }
         if (this.world.getFire(gx, gy) > 0.25 && ((gx + gy) & 1) === 0) {
           const p = this.worldToScreen(gx + 0.5, gy + 0.5, 0.3);

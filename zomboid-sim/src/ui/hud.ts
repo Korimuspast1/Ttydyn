@@ -15,7 +15,11 @@ import {
 import { CityWorld } from '../engine/world';
 import { createZomboidPixelIcon } from './pixelIcons';
 
-const TABS: { id: ToolCategory; label: string; icon: 'tab_all' | 'tab_build' | 'tab_survivors' | 'tab_zombies' | 'tab_events' }[] = [
+const TABS: {
+  id: ToolCategory;
+  label: string;
+  icon: 'tab_all' | 'tab_build' | 'tab_survivors' | 'tab_zombies' | 'tab_events';
+}[] = [
   { id: 'all', label: 'Все силы', icon: 'tab_all' },
   { id: 'build', label: 'Базы и авто', icon: 'tab_build' },
   { id: 'survivors', label: 'Люди и отряды', icon: 'tab_survivors' },
@@ -38,6 +42,8 @@ export class ZomboidHUD {
   private restoreTopBtn!: HTMLButtonElement;
   private dockEl!: HTMLElement;
   private restoreDockBtn!: HTMLButtonElement;
+  private playerBarEl!: HTMLElement;
+  private playerStatusEl!: HTMLElement;
   private statsRowEl!: HTMLElement;
   private versionTagEl!: HTMLElement;
   private radioListEl!: HTMLElement;
@@ -48,6 +54,8 @@ export class ZomboidHUD {
   private trayEl!: HTMLElement;
   private panThumbBtn!: HTMLButtonElement;
 
+  private playHeroBtn!: HTMLButtonElement;
+  private playZombieBtn!: HTMLButtonElement;
   private roofBtn!: HTMLButtonElement;
   private timeBtn!: HTMLButtonElement;
   private weatherBtn!: HTMLButtonElement;
@@ -68,7 +76,7 @@ export class ZomboidHUD {
     this.mount(root);
     this.attachRadio();
     this.pushRadio(
-      `Группа №1 заняла «Полицейский участок ${this.world.townName}»! Строители собирают брёвна для расширения базы.`,
+      `Группа №1 заняла «Полицейский участок ${this.world.townName}»! Нажмите [🎮 Играть за бойца] или [E] на любом персонаже!`,
       '#4cc9f0',
     );
   }
@@ -106,7 +114,15 @@ export class ZomboidHUD {
     this.sim = sim;
     this.attachRadio();
     this.versionTagEl.textContent = `Округ ${world.townName} • Бесконечный мир`;
-    this.pushRadio(`Новый открытый мир: ${world.townName}! Группа №1 развёрнута в Полицейском участке.`, '#80ed99');
+    this.pushRadio(`Новый открытый мир: ${world.townName}! Вы можете вселиться в любого человека или зомби!`, '#80ed99');
+  }
+
+  public enterPossessionZoom(): void {
+    if (this.renderer.zoom < 1.55) {
+      this.renderer.zoom = 1.68;
+    }
+    this.paused = false;
+    this.syncSpeedHighlight();
   }
 
   private mount(root: HTMLElement): void {
@@ -143,8 +159,8 @@ export class ZomboidHUD {
     title.textContent = 'ZOMBOID × WORLDBOX 2.5D';
 
     this.versionTagEl = document.createElement('span');
-    this.versionTagEl.className = 'wb-version-tag';
     this.versionTagEl.textContent = `Округ ${this.world.townName} • Бесконечный мир`;
+    this.versionTagEl.className = 'wb-version-tag';
 
     const hideTop = document.createElement('button');
     hideTop.className = 'wb-collapse-btn';
@@ -156,16 +172,39 @@ export class ZomboidHUD {
     this.statsRowEl = document.createElement('div');
     this.statsRowEl.className = 'wb-stats-row';
 
-    // Quick WorldBox wooden buttons row
+    // Quick WorldBox wooden buttons row (Play as Survivor / Play as Zombie / Squad #1 / World / Environment!)
     const quick = document.createElement('div');
     quick.className = 'wb-quick-buttons';
 
+    this.playHeroBtn = document.createElement('button');
+    this.playHeroBtn.className = 'wb-mini-btn wb-mini-play';
+    this.playHeroBtn.textContent = '🎮 Играть за бойца';
+    this.playHeroBtn.onclick = () => {
+      this.audio.unlock();
+      if (this.sim.controlledUid > 0) {
+        this.sim.releaseControl();
+      } else if (this.sim.possessBestUnit(false, this.renderer.camX, this.renderer.camY)) {
+        this.enterPossessionZoom();
+      }
+    };
+
+    this.playZombieBtn = document.createElement('button');
+    this.playZombieBtn.className = 'wb-mini-btn wb-mini-zombie';
+    this.playZombieBtn.textContent = '🧟 Играть за зомби';
+    this.playZombieBtn.onclick = () => {
+      this.audio.unlock();
+      if (this.sim.possessBestUnit(true, this.renderer.camX, this.renderer.camY)) {
+        this.enterPossessionZoom();
+      }
+    };
+
     const jumpSquad1Btn = document.createElement('button');
     jumpSquad1Btn.className = 'wb-mini-btn wb-mini-squad1';
-    jumpSquad1Btn.textContent = '🚓 К Группе №1 (Участок)';
+    jumpSquad1Btn.textContent = '🚓 Группа №1';
     jumpSquad1Btn.onclick = () => {
       this.audio.unlock();
       this.audio.playUiClick(660);
+      this.sim.releaseControl();
       this.renderer.focusSquad1PoliceStation();
     };
 
@@ -221,13 +260,16 @@ export class ZomboidHUD {
       this.soundBtn.textContent = this.audio.muted ? '🔇 Тихо' : '🔊 Звук';
     };
 
-    const dlExe = document.createElement('a');
-    dlExe.className = 'wb-mini-btn wb-mini-exe';
-    dlExe.href = './Zomboid-Knox-PC.exe';
-    dlExe.download = 'Zomboid-Knox-PC.exe';
-    dlExe.textContent = '⬇ Скачать .EXE';
-
-    quick.append(jumpSquad1Btn, newWorldBtn, this.roofBtn, this.timeBtn, this.weatherBtn, this.soundBtn, dlExe);
+    quick.append(
+      this.playHeroBtn,
+      this.playZombieBtn,
+      jumpSquad1Btn,
+      newWorldBtn,
+      this.roofBtn,
+      this.timeBtn,
+      this.weatherBtn,
+      this.soundBtn,
+    );
     this.topLeftEl.append(brandRow, this.statsRowEl, quick);
     root.appendChild(this.topLeftEl);
 
@@ -291,10 +333,63 @@ export class ZomboidHUD {
     thumbDock.append(this.panThumbBtn, zoomIn, zoomOut);
     root.appendChild(thumbDock);
 
-    // 5. Left WorldBox Unit Passport Card
+    // 5. Left WorldBox Unit Passport Card (Delegated pointerdown so Possess button ALWAYS responds!)
     this.passportEl = document.createElement('div');
     this.passportEl.className = 'wb-panel wb-passport';
+    this.passportEl.addEventListener('pointerdown', (ev) => {
+      const target = (ev.target as HTMLElement).closest<HTMLElement>('[data-action]');
+      if (!target) return;
+      ev.stopPropagation();
+      this.audio.unlock();
+      const action = target.dataset.action;
+      if (action === 'possess') {
+        const uid = Number(target.dataset.uid || '0');
+        if (uid > 0 && this.sim.possessUnitByUid(uid)) {
+          this.enterPossessionZoom();
+        }
+      } else if (action === 'release') {
+        this.sim.releaseControl();
+      } else if (action === 'cycle') {
+        if (this.sim.cycleControlledUnit()) this.enterPossessionZoom();
+      }
+    });
     root.appendChild(this.passportEl);
+
+    // 5.5 Direct Play-As-Anyone WorldBox Bottom Control Bar!
+    this.playerBarEl = document.createElement('div');
+    this.playerBarEl.className = 'wb-panel wb-player-bar';
+    this.playerStatusEl = document.createElement('div');
+    this.playerStatusEl.className = 'wb-player-top';
+
+    const actRow = document.createElement('div');
+    actRow.className = 'wb-player-actions';
+
+    const mkAct = (label: string, cls: string, fn: () => void) => {
+      const b = document.createElement('button');
+      b.className = `wb-mini-btn ${cls}`;
+      b.textContent = label;
+      b.onclick = () => {
+        this.audio.unlock();
+        fn();
+      };
+      return b;
+    };
+
+    actRow.append(
+      mkAct('⚔ Удар / Укус [ПКМ]', '', () => this.sim.playerMeleeStrike()),
+      mkAct('🔄 Оружие [Q]', '', () => this.sim.playerCycleWeapon()),
+      mkAct('✋ Дверь / Лут / Рубить [F]', '', () => this.sim.playerInteract()),
+      mkAct('🩹 Бинт / Еда [H]', '', () => this.sim.playerHealSelf()),
+      mkAct('🏗 Комната / Мешки [B]', 'wb-mini-accent', () => this.sim.playerBuildAction()),
+      mkAct('📻 Зов отряда / Орды [G]', 'wb-mini-squad1', () => this.sim.playerSpecialCall()),
+      mkAct('🔁 Другой герой [Tab]', 'wb-mini-play', () => {
+        if (this.sim.cycleControlledUnit()) this.enterPossessionZoom();
+      }),
+      mkAct('👑 Режим Бога [Esc]', '', () => this.sim.releaseControl()),
+    );
+
+    this.playerBarEl.append(this.playerStatusEl, actRow);
+    root.appendChild(this.playerBarEl);
 
     // 6. Iconic Bottom WorldBox Shelf, Tabs, Brush Selector & Slow/Fast Speed Bar!
     this.dockEl = document.createElement('div');
@@ -477,6 +572,16 @@ export class ZomboidHUD {
   public updateTelemetry(hoverUnit: UnitInspectionData | null): void {
     this.coordsEl.textContent = `X:${Math.round(this.renderer.camX)} Y:${Math.round(this.renderer.camY)}`;
 
+    const isPlaying = this.sim.controlledUid > 0;
+    this.playHeroBtn.textContent = isPlaying ? '👑 Выйти в Режим Бога' : '🎮 Играть за бойца';
+    this.playerBarEl.classList.toggle('visible', isPlaying);
+    if (isPlaying) {
+      this.dockEl.classList.add('wb-panel-hidden');
+      this.restoreDockBtn.classList.add('wb-panel-hidden');
+    } else if (!this.restoreDockBtn.classList.contains('wb-user-hidden')) {
+      this.dockEl.classList.remove('wb-panel-hidden');
+    }
+
     this.statsRowEl.innerHTML = `
       <span>⌚ <b>${this.sim.formattedClock}</b></span>
       <span class="wb-sep">|</span>
@@ -490,6 +595,14 @@ export class ZomboidHUD {
       <span class="wb-sep">|</span>
       <span>🚗 Разбито авто: <b>${this.sim.carsWreckedCount}</b></span>
     `;
+
+    if (isPlaying && hoverUnit && hoverUnit.isControlled) {
+      this.playerStatusEl.innerHTML = hoverUnit.isZombie
+        ? `<span style="color:#80ed99"><b>🧟 ВЫ ИГРАЕТЕ ЗА ЗОМБИ: ${hoverUnit.name}</b> (${hoverUnit.roleName})</span>
+           <span>❤️ HP: <b>${hoverUnit.hp}/${hoverUnit.maxHp}</b> • ⚡ Силы: <b>${hoverUnit.staminaPct}%</b> • WASD + Shift бег • ЛКМ укус/крушить!</span>`
+        : `<span style="color:#ffd466"><b>🎮 ВЫ ИГРАЕТЕ ЗА: ${hoverUnit.name}</b> (${hoverUnit.roleName})</span>
+           <span>❤️ HP: <b>${hoverUnit.hp}/${hoverUnit.maxHp}</b> • ⚡ <b>${hoverUnit.staminaPct}%</b> • 🔫 <b>${hoverUnit.weaponName}</b> (патр: <b>${hoverUnit.ammo}</b>) • 🪵 <b>${hoverUnit.wood}</b> • 🩹 <b>${hoverUnit.bandages}</b> • 🥫 <b>${hoverUnit.food}</b></span>`;
+    }
 
     if (!hoverUnit) {
       this.passportEl.classList.remove('visible');
@@ -517,7 +630,7 @@ export class ZomboidHUD {
           ? `<div class="wb-pass-line">Оружие: <b>${hoverUnit.weaponName}</b> (патр: <b>${hoverUnit.ammo}</b>) • Убито: <b>${hoverUnit.kills}</b></div>
              <div class="wb-pass-line">🪵 Брёвна: <b>${hoverUnit.wood}</b> • Доски: <b>${hoverUnit.planks}</b> • 🥫 Еда: <b>${hoverUnit.food}</b> • 🩹 Бинты: <b>${hoverUnit.bandages}</b></div>
              <div class="wb-pass-line">База: <b>${hoverUnit.safehouseName || 'Кочует по открытому миру'}</b></div>`
-          : `<div class="wb-pass-line">Ломает двери, окна и машины • Не может пройти сквозь стены</div>`
+          : `<div class="wb-pass-line">Можно вселиться и играть за этого зомби: кусать людей и ломать авто!</div>`
       }
       ${
         hoverUnit.moodles.length > 0
@@ -526,6 +639,14 @@ export class ZomboidHUD {
               .join('')}</div>`
           : ''
       }
+      <div class="wb-possess-row">
+        ${
+          hoverUnit.isControlled
+            ? `<button class="wb-possess-btn" data-action="cycle">🔁 Другой [Tab]</button>
+               <button class="wb-possess-btn wb-exit" data-action="release">👑 Выйти [Esc]</button>`
+            : `<button class="wb-possess-btn" data-action="possess" data-uid="${hoverUnit.uid}">🎮 Играть за ${hoverUnit.isZombie ? 'этого зомби' : 'этого бойца'} [E]</button>`
+        }
+      </div>
     `;
   }
 }

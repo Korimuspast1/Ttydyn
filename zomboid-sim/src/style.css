@@ -244,10 +244,79 @@ body,
   border-color: var(--wb-gold);
 }
 
-.wb-mini-exe {
-  background: #1f4030;
-  color: #a9ffd0;
-  border-color: #46c97f;
+.wb-mini-play {
+  background: #1f4d36;
+  color: #b7ffcf;
+  border-color: #52d18a;
+}
+
+.wb-mini-zombie {
+  background: #3d243b;
+  color: #c8f7b0;
+  border-color: #80ed99;
+}
+
+.wb-possess-row {
+  margin-top: 6px;
+  display: flex;
+  gap: 5px;
+}
+
+.wb-possess-btn {
+  flex: 1;
+  cursor: pointer;
+  background: #23533a;
+  border: 2px solid var(--wb-outline);
+  box-shadow: inset 0 1px 0 #65d694, 0 2px 0 rgba(0, 0, 0, 0.45);
+  color: #e9fff1;
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 5px 8px;
+}
+
+.wb-possess-btn:hover {
+  background: #2d6a4f;
+  color: #fff3b0;
+}
+
+.wb-possess-btn.wb-exit {
+  background: #5c2a2a;
+  box-shadow: inset 0 1px 0 #e07a5f;
+  color: #ffd6cc;
+}
+
+/* Direct Play-As-Anyone WorldBox Bottom Action Bar */
+.wb-player-bar {
+  position: fixed;
+  bottom: calc(10px + var(--safe-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 32;
+  padding: 8px 12px;
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  max-width: min(940px, calc(100vw - 24px));
+}
+
+.wb-player-bar.visible {
+  display: flex;
+}
+
+.wb-player-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+}
+
+.wb-player-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
 }
 
 /* Top-Right Infinite Open World Radar & 93.2 FM Radio */

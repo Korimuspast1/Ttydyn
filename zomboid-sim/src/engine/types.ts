@@ -62,6 +62,24 @@ export const PROP_BED = 9;
 export const PROP_GAS_PUMP = 10;
 export const PROP_AIRDROP = 11;
 export const PROP_TRASH_BIN = 12;
+export const PROP_BARREL_FIRE = 13;
+export const PROP_WORKBENCH = 14;
+export const PROP_GENERATOR = 15;
+export const PROP_HYDRANT = 16;
+export const PROP_LOG_PILE = 17;
+export const PROP_CORPSE = 18;
+
+export interface AnimatedFxBurst {
+  kind: 'explosion' | 'slash' | 'muzzle' | 'smoke_puff';
+  x: number;
+  y: number;
+  z: number;
+  angle: number;
+  age: number;
+  duration: number;
+  scale: number;
+  tint?: 'human' | 'zombie';
+}
 
 export type BuildingKind =
   | 'house'
@@ -387,7 +405,7 @@ export const SIM_TOOLS: SimToolDef[] = [
     id: 'propane_bomb',
     name: 'Взрыв пропана',
     short: 'Пропан',
-    hotkey: 'E',
+    hotkey: 'X',
     category: 'events',
     accent: '#d90429',
     desc: 'Мощный взрыв: проламывает стены для штурма, мнёт машины и разбрасывает осколки!',
@@ -400,8 +418,11 @@ export interface UnitInspectionData {
   squadId: number;
   roleName: string;
   isZombie: boolean;
+  isControlled: boolean;
   hp: number;
   maxHp: number;
+  staminaPct: number;
+  weaponId: number;
   weaponName: string;
   ammo: number;
   food: number;

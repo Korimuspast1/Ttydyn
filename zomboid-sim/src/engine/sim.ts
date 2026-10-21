@@ -1,9 +1,13 @@
 import { ZomboidAudio } from '../audio/sfx';
 import {
+  AnimatedFxBurst,
   BRUSH_SIZES,
   CHUNK_SHIFT,
   CHUNK_SIZE,
+  FLOOR_DIRT,
+  FLOOR_GRASS,
   FLOOR_WATER,
+  FLOOR_WOOD,
   isOpaqueWallStruct,
   isZombieRole,
   MOODLE_BITTEN,
@@ -14,16 +18,19 @@ import {
   MOODLE_TIRED,
   PROP_AIRDROP,
   PROP_BED,
+  PROP_CORPSE,
   PROP_CRATE,
   PROP_FRIDGE,
   PROP_GAS_PUMP,
   PROP_GUN_LOCKER,
+  PROP_LOG_PILE,
   PROP_MED_CABINET,
   PROP_NONE,
   PROP_SHELF,
   PROP_TRASH_BIN,
   PROP_TREE_OAK,
   PROP_TREE_PINE,
+  PROP_WORKBENCH,
   ROLE_CIVILIAN,
   ROLE_MEDIC,
   ROLE_POLICE,
@@ -134,11 +141,28 @@ export class ZomboidSimulation {
   public uUid = new Int32Array(MAX_UNITS);
   public uNameIdx = new Uint16Array(MAX_UNITS);
   public uStuckTimer = new Float32Array(MAX_UNITS);
+  public uAttackAnim = new Float32Array(MAX_UNITS);
+  public uStamina = new Float32Array(MAX_UNITS).fill(1);
 
   private nextUid = 1;
   private nextSquadId = 2; // 1 is ALWAYS reserved for Группа №1 in Police Station!
   public selectedUid = 0;
+  public controlledUid = 0; // >0 = Player is directly controlling this exact survivor OR zombie!
   public brushIndex = 1;
+
+  // Direct Player Possession Input State
+  public playerInput = {
+    moveScreenX: 0,
+    moveScreenY: 0,
+    sprint: false,
+    aimWx: 16,
+    aimWy: 16,
+    primaryDown: false,
+  };
+  private footstepAccum = 0;
+
+  // Multi-frame Pixel FX Flipbooks (Explosions, Muzzle Flashes, Melee Slash Arcs, Smoke Puffs)
+  public fxBursts: AnimatedFxBurst[] = [];
 
   // Unbounded Spatial Hash Grid (4x4 tile cells across infinite world -∞ .. +∞!)
   private gridHead = new Int16Array(HASH_BUCKETS);
@@ -294,6 +318,8 @@ export class ZomboidSimulation {
     this.totalExpansionsBuilt = 0;
     this.carsWreckedCount = 0;
     this.selectedUid = 0;
+    this.controlledUid = 0;
+    this.fxBursts = [];
     this.nextSquadId = 2;
     this.targetCache.fill(-1);
 
@@ -445,6 +471,8 @@ export class ZomboidSimulation {
     this.uTask[i] = 0;
     this.uWood[i] = 0;
     this.uStuckTimer[i] = 0;
+    this.uAttackAnim[i] = 0;
+    this.uStamina[i] = 1.0;
     this.targetCache[i] = -1;
 
     if (role === ROLE_POLICE) {
@@ -829,7 +857,7 @@ export class ZomboidSimulation {
     if (this.lightningFlash > 0) this.lightningFlash = Math.max(0, this.lightningFlash - dt * 2.4);
     if (this.weather === 'storm' && Math.random() < dt * 0.14) {
       this.lightningFlash = 0.72;
-      this.sfx.playExplosion(0.32);
+      this.sfx.playExplosion();
     }
 
     // 2. Rebuild Infinite Spatial Hash Grid
@@ -885,19 +913,34 @@ export class ZomboidSimulation {
       this.updateSingleUnit(i, dt);
     }
 
-    // Compact dead units
+    // Compact dead units & spawn persistent ground corpses!
     let write = 0;
     for (let i = 0; i < this.count; i++) {
       if (this.uHp[i] > 0) {
         if (write !== i) this.copyUnitSlot(write, i);
         write++;
+      } else {
+        const dgX = Math.floor(this.ux[i]);
+        const dgY = Math.floor(this.uy[i]);
+        this.world.addBlood(dgX, dgY, 0.55);
+        if (this.world.getProp(dgX, dgY) === PROP_NONE && this.world.getStruct(dgX, dgY) === STRUCT_NONE) {
+          this.world.setProp(dgX, dgY, PROP_CORPSE);
+        }
+        if (isZombieRole(this.uRole[i])) {
+          this.sfx.playZombieDeath(this.ux[i], this.uy[i]);
+        }
+        if (this.uUid[i] === this.controlledUid) {
+          this.controlledUid = 0;
+          this.onRadioBroadcast?.('☠ Ваш персонаж погиб! Выберите другого выжившего или зомби [Tab / E]!', '#ff6b6b');
+        }
       }
     }
     this.count = write;
 
-    // 6. Micro-stepped Bullets (100% blocked by walls!) & 3D Particles & Fire
+    // 6. Micro-stepped Bullets (100% blocked by walls!) & 3D Particles & Multi-Frame FX Flipbooks & Fire
     this.stepBullets(dt);
     this.stepParticles(dt);
+    this.stepFxBursts(dt);
     this.stepFire(dt);
 
     // 7. Sound Wave Rings Decay
@@ -954,6 +997,7 @@ export class ZomboidSimulation {
 
     if (this.uCooldown[i] > 0) this.uCooldown[i] -= dt;
     if (this.uGoalTimer[i] > 0) this.uGoalTimer[i] -= dt;
+    if (this.uAttackAnim[i] > 0) this.uAttackAnim[i] = Math.max(0, this.uAttackAnim[i] - dt);
 
     // Fire damage
     const tileFire = this.world.getFire(Math.floor(this.ux[i]), Math.floor(this.uy[i]));
@@ -990,7 +1034,7 @@ export class ZomboidSimulation {
           this.uMaxHp[i] = 100;
           this.uInfection[i] = 0;
           this.totalInfectedTurned++;
-          this.sfx.playZombieGroan();
+          this.sfx.playZombieGroan(this.ux[i], this.uy[i], true);
           const sq = this.uSquad[i];
           this.uSquad[i] = 0;
           this.onRadioBroadcast?.(
@@ -1006,6 +1050,12 @@ export class ZomboidSimulation {
       else this.uMoodles[i] &= ~MOODLE_HUNGRY;
       if (this.uWood[i] >= 8) this.uMoodles[i] |= MOODLE_HEAVY_LOAD;
       else this.uMoodles[i] &= ~MOODLE_HEAVY_LOAD;
+    }
+
+    // ★ DIRECT PLAYER CONTROL MODE — Player is driving this exact character!
+    if (this.controlledUid > 0 && this.uUid[i] === this.controlledUid) {
+      this.updateControlledUnit(i, dt, isHuman);
+      return;
     }
 
     // Periodic AI Target Search WITH STRICT LINE-OF-SIGHT CHECK FOR HUMANS!
@@ -1370,10 +1420,16 @@ export class ZomboidSimulation {
   private humanPerformAttack(i: number, tgt: number, useGun: boolean): void {
     const wpn = WEAPONS[this.uWeapon[i]] || WEAPONS[0];
     this.uCooldown[i] = wpn.cooldown * (0.92 + Math.random() * 0.2);
+    this.uAttackAnim[i] = 0.26;
+
+    const ang = Math.atan2(this.uy[tgt] - this.uy[i], this.ux[tgt] - this.ux[i]);
+    this.uAngle[i] = ang;
 
     if (!useGun) {
-      // Melee strike (Axe / Baseball Bat / Knife)
-      this.sfx.playWoodImpact(false);
+      // Melee strike (Axe / Baseball Bat / Knife) with slash FX & real studio impact audio!
+      this.sfx.playMeleeSwing(this.ux[i], this.uy[i]);
+      this.sfx.playFleshHit(this.ux[tgt], this.uy[tgt]);
+      this.spawnFxBurst('slash', this.ux[i] + Math.cos(ang) * 0.65, this.uy[i] + Math.sin(ang) * 0.65, 0.5, ang, 0.22, 1.0, 'human');
       this.uHp[tgt] -= wpn.damage;
       this.world.addBlood(Math.floor(this.ux[tgt]), Math.floor(this.uy[tgt]), 0.25);
       for (let p = 0; p < 5; p++) {
@@ -1387,8 +1443,13 @@ export class ZomboidSimulation {
     if (!this.hasLineOfSight(this.ux[i], this.uy[i], this.ux[tgt], this.uy[tgt])) return;
 
     this.uAmmo[i]--;
-    const ang = Math.atan2(this.uy[tgt] - this.uy[i], this.ux[tgt] - this.ux[i]);
-    this.sfx.playGunshot(this.uWeapon[i] === WPN_SHOTGUN ? 'shotgun' : this.uWeapon[i] === WPN_RIFLE ? 'rifle' : 'pistol');
+    this.sfx.playGunshot(
+      this.uWeapon[i] === WPN_SHOTGUN ? 'shotgun' : this.uWeapon[i] === WPN_RIFLE ? 'rifle' : 'pistol',
+      this.ux[i],
+      this.uy[i],
+      false,
+    );
+    this.spawnFxBurst('muzzle', this.ux[i] + Math.cos(ang) * 0.52, this.uy[i] + Math.sin(ang) * 0.52, 0.52, ang, 0.12, 1.0);
     this.emitSound(this.ux[i], this.uy[i], wpn.noiseRadius, '#ffd166');
 
     // Eject brass shell casing!
@@ -1420,6 +1481,12 @@ export class ZomboidSimulation {
   }
 
   private zombieBiteHuman(zIdx: number, hIdx: number): void {
+    this.uAttackAnim[zIdx] = 0.28;
+    const ang = Math.atan2(this.uy[hIdx] - this.uy[zIdx], this.ux[hIdx] - this.ux[zIdx]);
+    this.spawnFxBurst('slash', this.ux[zIdx] + Math.cos(ang) * 0.55, this.uy[zIdx] + Math.sin(ang) * 0.55, 0.5, ang, 0.24, 0.95, 'zombie');
+    this.sfx.playZombieGroan(this.ux[zIdx], this.uy[zIdx]);
+    this.sfx.playFleshHit(this.ux[hIdx], this.uy[hIdx]);
+
     this.uHp[hIdx] -= 16;
     this.uPanic[hIdx] = 1.0;
     this.uMoodles[hIdx] |= MOODLE_PANIC | MOODLE_BLEEDING;
@@ -1443,7 +1510,10 @@ export class ZomboidSimulation {
       this.uMaxHp[hIdx] = 95;
       this.uSquad[hIdx] = 0;
       this.totalInfectedTurned++;
-      this.sfx.playZombieGroan();
+      this.sfx.playZombieGroan(this.ux[hIdx], this.uy[hIdx], true);
+      if (this.uUid[hIdx] === this.controlledUid) {
+        this.onRadioBroadcast?.('🧟 ВАС ОБРАТИЛИ В ЗОМБИ! Теперь вы можете кусать выживших и крушить машины!', '#80ed99');
+      }
     }
   }
 
@@ -1473,6 +1543,7 @@ export class ZomboidSimulation {
 
         // 1. STRICT SOLID WALL CHECK — Bullet NEVER penetrates ANY wall!
         if (this.world.blocksBulletsAndSight(gx, gy)) {
+          this.sfx.playBulletWallImpact(this.bx[b], this.by[b]);
           for (let p = 0; p < 4; p++) {
             this.spawnParticle(this.bx[b] - sx, this.by[b] - sy, 0.55, (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4, 2.2, PART_SPARK, 0.35);
           }
@@ -1483,7 +1554,7 @@ export class ZomboidSimulation {
         // Shatter intact windows cleanly when shot through!
         if (this.world.getStruct(gx, gy) === STRUCT_WINDOW_INTACT) {
           this.world.setStruct(gx, gy, STRUCT_WINDOW_BROKEN);
-          this.sfx.playGlassShatter();
+          this.sfx.playGlassShatter(gx + 0.5, gy + 0.5);
           for (let p = 0; p < 8; p++) {
             this.spawnParticle(gx + 0.5, gy + 0.5, 0.6, (Math.random() - 0.5) * 3.5, (Math.random() - 0.5) * 3.5, 2.0, PART_GLASS, 1.3);
           }
@@ -1521,6 +1592,7 @@ export class ZomboidSimulation {
               const d2 = (this.ux[u] - this.bx[b]) ** 2 + (this.uy[u] - this.by[b]) ** 2;
               if (d2 < 0.22) {
                 this.uHp[u] -= this.bDmg[b];
+                this.sfx.playFleshHit(this.ux[u], this.uy[u]);
                 this.world.addBlood(Math.floor(this.ux[u]), Math.floor(this.uy[u]), 0.22);
                 const mag = Math.max(0.01, Math.hypot(this.bvx[b], this.bvy[b]));
                 this.ux[u] += (this.bvx[b] / mag) * this.bKnock[b] * 0.08;
@@ -1668,8 +1740,21 @@ export class ZomboidSimulation {
   }
 
   public triggerExplosion(wx: number, wy: number, radius: number, spawnFire: boolean): void {
-    this.sfx.playExplosion(1.0);
+    this.sfx.playExplosion(wx, wy);
     this.emitSound(wx, wy, 75, '#ff5400', '💥 ВЗРЫВ!');
+    // Multi-frame Pixel Explosion Flipbook + Rising Smoke Billows!
+    this.spawnFxBurst('explosion', wx, wy, 0.4, 0, 0.62, Math.max(1.1, radius * 0.48));
+    for (let k = 0; k < 4; k++) {
+      this.spawnFxBurst(
+        'smoke_puff',
+        wx + (Math.random() - 0.5) * radius * 0.8,
+        wy + (Math.random() - 0.5) * radius * 0.8,
+        0.5 + k * 0.25,
+        0,
+        1.15 + Math.random() * 0.5,
+        1.15,
+      );
+    }
 
     const rCeil = Math.ceil(radius);
     const cgx = Math.floor(wx);
@@ -1957,6 +2042,7 @@ export class ZomboidSimulation {
 
   public getUnitInspection(hoverWx: number, hoverWy: number): UnitInspectionData | null {
     let idx = -1;
+    // Always prioritize currently possessed character if Player is in Direct Control Mode (unless inspecting another selected unit)!
     if (this.selectedUid > 0) {
       for (let i = 0; i < this.count; i++) {
         if (this.uUid[i] === this.selectedUid && this.uHp[i] > 0) {
@@ -1966,8 +2052,11 @@ export class ZomboidSimulation {
       }
       if (idx < 0) this.selectedUid = 0;
     }
+    if (idx < 0 && this.controlledUid > 0) {
+      idx = this.getControlledIndex();
+    }
     if (idx < 0) {
-      let bestD2 = 1.6 * 1.6;
+      let bestD2 = 1.8 * 1.8;
       for (let i = 0; i < this.count; i++) {
         if (this.uHp[i] <= 0) continue;
         const d2 = (this.ux[i] - hoverWx) ** 2 + (this.uy[i] - hoverWy) ** 2;
@@ -1981,6 +2070,7 @@ export class ZomboidSimulation {
 
     const role = this.uRole[idx];
     const zed = isZombieRole(role);
+    const isCtrl = this.uUid[idx] === this.controlledUid && this.controlledUid > 0;
     const nSeed = this.uNameIdx[idx];
     const fullName = `${FIRST_NAMES[nSeed % FIRST_NAMES.length]} ${LAST_NAMES[(nSeed >> 5) % LAST_NAMES.length].trim()}`;
 
@@ -2025,8 +2115,11 @@ export class ZomboidSimulation {
       squadId: this.uSquad[idx],
       roleName: roleNames[role] || 'Неизвестный',
       isZombie: zed,
+      isControlled: isCtrl,
       hp: Math.ceil(this.uHp[idx]),
       maxHp: Math.ceil(this.uMaxHp[idx]),
+      staminaPct: Math.round(this.uStamina[idx] * 100),
+      weaponId: this.uWeapon[idx],
       weaponName: WEAPONS[this.uWeapon[idx]]?.name || 'Безоружен',
       ammo: this.uAmmo[idx],
       food: this.uFood[idx],
@@ -2034,7 +2127,7 @@ export class ZomboidSimulation {
       planks: this.uPlanks[idx],
       wood: this.uWood[idx],
       kills: this.uKills[idx],
-      taskText: taskNames[this.uTask[idx]] || 'Осматривается',
+      taskText: isCtrl ? '🎮 ПРЯМОЕ УПРАВЛЕНИЕ ИГРОКА' : taskNames[this.uTask[idx]] || 'Осматривается',
       infectionPct: Math.min(100, Math.round(this.uInfection[idx] * 100)),
       moodles,
       safehouseName: safeName,
@@ -2106,5 +2199,558 @@ export class ZomboidSimulation {
     this.uTask[dst] = this.uTask[src];
     this.uUid[dst] = this.uUid[src];
     this.uNameIdx[dst] = this.uNameIdx[src];
+    this.uStuckTimer[dst] = this.uStuckTimer[src];
+    this.uAttackAnim[dst] = this.uAttackAnim[src];
+    this.uStamina[dst] = this.uStamina[src];
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ★ DIRECT PLAY-AS-ANYONE MODE (PLAY AS ANY HUMAN SURVIVOR OR ANY ZOMBIE!) ★
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  public spawnFxBurst(
+    kind: AnimatedFxBurst['kind'],
+    x: number,
+    y: number,
+    z: number,
+    angle: number,
+    duration: number,
+    scale = 1.0,
+    tint?: 'human' | 'zombie',
+  ): void {
+    if (this.fxBursts.length >= 64) this.fxBursts.shift();
+    this.fxBursts.push({ kind, x, y, z, angle, age: 0, duration, scale, tint });
+  }
+
+  private stepFxBursts(dt: number): void {
+    for (let k = this.fxBursts.length - 1; k >= 0; k--) {
+      const fx = this.fxBursts[k];
+      fx.age += dt;
+      if (fx.kind === 'smoke_puff') {
+        fx.z += dt * 0.9;
+      }
+      if (fx.age >= fx.duration) {
+        this.fxBursts.splice(k, 1);
+      }
+    }
+  }
+
+  public getControlledIndex(): number {
+    if (this.controlledUid <= 0) return -1;
+    for (let i = 0; i < this.count; i++) {
+      if (this.uUid[i] === this.controlledUid && this.uHp[i] > 0) return i;
+    }
+    this.controlledUid = 0;
+    return -1;
+  }
+
+  public possessUnitByUid(uid: number): boolean {
+    for (let i = 0; i < this.count; i++) {
+      if (this.uUid[i] === uid && this.uHp[i] > 0) {
+        this.controlledUid = uid;
+        this.selectedUid = uid;
+        this.uCooldown[i] = 0;
+        const zed = isZombieRole(this.uRole[i]);
+        const nSeed = this.uNameIdx[i];
+        const fullName = `${FIRST_NAMES[nSeed % FIRST_NAMES.length]} ${LAST_NAMES[(nSeed >> 5) % LAST_NAMES.length].trim()}`;
+        this.sfx.playUiClick(680);
+        if (zed) this.sfx.playZombieGroan(this.ux[i], this.uy[i], true);
+        this.onRadioBroadcast?.(
+          zed
+            ? `🧟 Вы вселились в зомби (${fullName})! WASD — идти, ЛКМ — укус/крушить, G — зов орды, Esc — выход`
+            : `🎮 Вы играете за ${fullName}! WASD — идти, ЛКМ — огонь/удар, F — действие, Q — оружие, B — стройка, Esc — выход`,
+          zed ? '#80ed99' : '#ffd466',
+        );
+        return true;
+      }
+    }
+    return false;
+  }
+
+  public possessNearCursor(wx: number, wy: number, radius = 3.2): boolean {
+    let best = -1;
+    let bestD2 = radius * radius;
+    for (let i = 0; i < this.count; i++) {
+      if (this.uHp[i] <= 0) continue;
+      const d2 = (this.ux[i] - wx) ** 2 + (this.uy[i] - wy) ** 2;
+      if (d2 < bestD2) {
+        bestD2 = d2;
+        best = i;
+      }
+    }
+    if (best >= 0) return this.possessUnitByUid(this.uUid[best]);
+    return false;
+  }
+
+  public possessBestUnit(preferZombie = false, nearX?: number, nearY?: number): boolean {
+    let best = -1;
+    let bestScore = 1e9;
+    const cx = nearX ?? this.policeStationCoords.x;
+    const cy = nearY ?? this.policeStationCoords.y;
+
+    for (let i = 0; i < this.count; i++) {
+      if (this.uHp[i] <= 0) continue;
+      const zed = isZombieRole(this.uRole[i]);
+      if (zed !== preferZombie) continue;
+      let score = Math.hypot(this.ux[i] - cx, this.uy[i] - cy);
+      if (!zed && this.uSquad[i] === 1) score -= 25; // Prioritize Группа №1 when picking default survivor!
+      if (!zed && this.uWeapon[i] >= WPN_PISTOL) score -= 5; // Prefer armed firearm fighter first!
+      if (score < bestScore) {
+        bestScore = score;
+        best = i;
+      }
+    }
+    if (best >= 0) return this.possessUnitByUid(this.uUid[best]);
+    return false;
+  }
+
+  public cycleControlledUnit(): boolean {
+    if (this.count === 0) return false;
+    const curIdx = this.getControlledIndex();
+    const start = curIdx >= 0 ? curIdx + 1 : 0;
+    for (let step = 0; step < this.count; step++) {
+      const k = (start + step) % this.count;
+      if (this.uHp[k] > 0) {
+        return this.possessUnitByUid(this.uUid[k]);
+      }
+    }
+    return false;
+  }
+
+  public releaseControl(): void {
+    if (this.controlledUid <= 0) return;
+    this.controlledUid = 0;
+    this.playerInput.primaryDown = false;
+    this.sfx.playUiClick(480);
+    this.onRadioBroadcast?.('👑 Возврат в Режим Бога WorldBox! Персонаж снова под управлением ИИ.', '#94d2bd');
+  }
+
+  private updateControlledUnit(i: number, dt: number, isHuman: boolean): void {
+    // 1. Always orient character smoothly toward mouse world cursor!
+    const aimDx = this.playerInput.aimWx - this.ux[i];
+    const aimDy = this.playerInput.aimWy - this.uy[i];
+    if (Math.hypot(aimDx, aimDy) > 0.05) {
+      this.uAngle[i] = Math.atan2(aimDy, aimDx);
+    }
+
+    // 2. Convert screen-space WASD input cleanly into isometric world movement vector!
+    // Screen right (+sx) = (+wx, -wy); Screen down (+sy) = (+wx, +wy)
+    const sx = this.playerInput.moveScreenX;
+    const sy = this.playerInput.moveScreenY;
+    let moveWx = sx + sy;
+    let moveWy = sy - sx;
+    const mag = Math.hypot(moveWx, moveWy);
+
+    const role = this.uRole[i];
+    const baseWalk = isHuman
+      ? 2.85
+      : role === ROLE_ZOMBIE_SPRINTER
+        ? 3.1
+        : role === ROLE_ZOMBIE_CRAWLER
+          ? 1.15
+          : 2.05;
+
+    let isSprinting = false;
+    let spd = 0;
+    if (mag > 0.01) {
+      moveWx /= mag;
+      moveWy /= mag;
+      if (this.playerInput.sprint && this.uStamina[i] > 0.08) {
+        isSprinting = true;
+        this.uStamina[i] = Math.max(0, this.uStamina[i] - dt * 0.24);
+      } else {
+        this.uStamina[i] = Math.min(1, this.uStamina[i] + dt * 0.14);
+      }
+      spd = baseWalk * (isSprinting ? 1.58 : 1.0);
+    } else {
+      moveWx = 0;
+      moveWy = 0;
+      this.uStamina[i] = Math.min(1, this.uStamina[i] + dt * 0.26);
+    }
+
+    this.uMoodles[i] = this.uStamina[i] < 0.25 ? this.uMoodles[i] | MOODLE_TIRED : this.uMoodles[i] & ~MOODLE_TIRED;
+
+    this.uvx[i] = moveWx * spd;
+    this.uvy[i] = moveWy * spd;
+
+    if (spd > 0.1) {
+      this.uWalkPhase[i] += dt * spd * 4.6;
+      this.footstepAccum += dt * (isSprinting ? 1.5 : 1.0);
+      if (this.footstepAccum >= 0.34) {
+        this.footstepAccum = 0;
+        const gx = Math.floor(this.ux[i]);
+        const gy = Math.floor(this.uy[i]);
+        const flr = this.world.getFloor(gx, gy);
+        const st = this.world.getStruct(gx, gy);
+        const surf: 'glass' | 'wood' | 'grass' | 'concrete' =
+          st === STRUCT_WINDOW_BROKEN
+            ? 'glass'
+            : flr === FLOOR_WOOD
+              ? 'wood'
+              : flr === FLOOR_GRASS || flr === FLOOR_DIRT
+                ? 'grass'
+                : 'concrete';
+        this.sfx.playFootstep(surf, this.ux[i], this.uy[i], isSprinting);
+      }
+    }
+
+    // 4 Sub-steps per frame for silky sliding along walls & vehicles with ZERO wall clipping!
+    const subDt = dt * 0.25;
+    for (let s = 0; s < 4; s++) {
+      this.ux[i] += this.uvx[i] * subDt;
+      this.uy[i] += this.uvy[i] * subDt;
+      this.resolveUnitCollisions(i, subDt);
+    }
+
+    // Ensure infinite chunks keep streaming seamlessly as the player explores!
+    if ((this.aiTick & 15) === 0) {
+      this.world.ensureAreaLoaded(this.ux[i], this.uy[i], 2);
+    }
+
+    // Continuous primary attack when holding Left Mouse Button!
+    if (this.playerInput.primaryDown && this.uCooldown[i] <= 0) {
+      this.playerPrimaryAttack();
+    }
+  }
+
+  public playerPrimaryAttack(): void {
+    const i = this.getControlledIndex();
+    if (i < 0 || this.uCooldown[i] > 0) return;
+
+    const zed = isZombieRole(this.uRole[i]);
+    if (zed) {
+      this.performPlayerZombieClaw(i);
+      return;
+    }
+
+    const wpn = WEAPONS[this.uWeapon[i]] || WEAPONS[0];
+    if (!wpn.isGun || this.uAmmo[i] <= 0) {
+      this.playerMeleeStrike();
+      return;
+    }
+
+    // Responsive player firearm shot along cursor angle!
+    const ang = Math.atan2(this.playerInput.aimWy - this.uy[i], this.playerInput.aimWx - this.ux[i]);
+    this.uAngle[i] = ang;
+    this.uAttackAnim[i] = 0.22;
+    this.uCooldown[i] =
+      this.uWeapon[i] === WPN_RIFLE ? 0.16 : this.uWeapon[i] === WPN_SHOTGUN ? 0.62 : 0.34;
+    this.uAmmo[i]--;
+
+    this.sfx.playGunshot(
+      this.uWeapon[i] === WPN_SHOTGUN ? 'shotgun' : this.uWeapon[i] === WPN_RIFLE ? 'rifle' : 'pistol',
+      this.ux[i],
+      this.uy[i],
+      true,
+    );
+    this.spawnFxBurst('muzzle', this.ux[i] + Math.cos(ang) * 0.55, this.uy[i] + Math.sin(ang) * 0.55, 0.52, ang, 0.12, 1.25);
+    this.emitSound(this.ux[i], this.uy[i], wpn.noiseRadius, '#ffd166');
+
+    this.spawnParticle(
+      this.ux[i],
+      this.uy[i],
+      0.55,
+      Math.cos(ang + 1.5) * 2.5,
+      Math.sin(ang + 1.5) * 2.5,
+      2.8,
+      PART_SHELL,
+      1.6,
+    );
+
+    const speed = 18.0;
+    for (let p = 0; p < wpn.pellets && this.bulletCount < MAX_BULLETS; p++) {
+      const a = ang + (Math.random() - 0.5) * wpn.spread * 0.75;
+      const b = this.bulletCount++;
+      this.bx[b] = this.ux[i] + Math.cos(a) * 0.36;
+      this.by[b] = this.uy[i] + Math.sin(a) * 0.36;
+      this.bvx[b] = Math.cos(a) * speed;
+      this.bvy[b] = Math.sin(a) * speed;
+      this.bLife[b] = (wpn.range + 2.5) / speed;
+      this.bDmg[b] = wpn.damage * 1.25;
+      this.bKnock[b] = wpn.knockback * 1.2;
+      this.bRaider[b] = this.uRole[i] === ROLE_RAIDER ? 1 : 0;
+      this.bOwner[b] = i;
+    }
+  }
+
+  public playerMeleeStrike(): void {
+    const i = this.getControlledIndex();
+    if (i < 0) return;
+    if (isZombieRole(this.uRole[i])) {
+      this.performPlayerZombieClaw(i);
+      return;
+    }
+    if (this.uCooldown[i] > 0) return;
+
+    const ang = Math.atan2(this.playerInput.aimWy - this.uy[i], this.playerInput.aimWx - this.ux[i]);
+    this.uAngle[i] = ang;
+    this.uAttackAnim[i] = 0.28;
+    this.uCooldown[i] = 0.42;
+
+    this.sfx.playMeleeSwing(this.ux[i], this.uy[i], true);
+    this.spawnFxBurst(
+      'slash',
+      this.ux[i] + Math.cos(ang) * 0.72,
+      this.uy[i] + Math.sin(ang) * 0.72,
+      0.5,
+      ang,
+      0.24,
+      1.25,
+      'human',
+    );
+
+    const dmg = this.uWeapon[i] === WPN_AXE ? 68 : this.uWeapon[i] === WPN_BAT ? 50 : 34;
+
+    // 1. Cleave all hostile targets in a wide 120° arc up to 1.85 tiles in front (respecting walls!)
+    for (let k = 0; k < this.count; k++) {
+      if (k === i || this.uHp[k] <= 0) continue;
+      const isEnemy =
+        isZombieRole(this.uRole[k]) ||
+        (this.uRole[i] === ROLE_RAIDER ? this.uRole[k] !== ROLE_RAIDER : this.uRole[k] === ROLE_RAIDER);
+      if (!isEnemy) continue;
+
+      const dx = this.ux[k] - this.ux[i];
+      const dy = this.uy[k] - this.uy[i];
+      const dist = Math.hypot(dx, dy);
+      if (dist > 1.85) continue;
+      const diff = Math.abs(Math.atan2(Math.sin(Math.atan2(dy, dx) - ang), Math.cos(Math.atan2(dy, dx) - ang)));
+      if (diff > 1.15) continue;
+      if (!this.hasLineOfSight(this.ux[i], this.uy[i], this.ux[k], this.uy[k])) continue;
+
+      this.uHp[k] -= dmg;
+      this.sfx.playFleshHit(this.ux[k], this.uy[k]);
+      this.world.addBlood(Math.floor(this.ux[k]), Math.floor(this.uy[k]), 0.32);
+      if (dist > 0.05) {
+        this.ux[k] += (dx / dist) * 0.42;
+        this.uy[k] += (dy / dist) * 0.42;
+        this.resolveUnitCollisions(k, 0.016);
+      }
+      for (let p = 0; p < 6; p++) {
+        this.spawnParticle(this.ux[k], this.uy[k], 0.5, (Math.random() - 0.5) * 3.2, (Math.random() - 0.5) * 3.2, 2.0, PART_BLOOD, 0.9);
+      }
+      if (this.uHp[k] <= 0) this.uKills[i]++;
+    }
+
+    // 2. Also chop trees or smash intact window directly ahead!
+    const tx = Math.floor(this.ux[i] + Math.cos(ang) * 1.05);
+    const ty = Math.floor(this.uy[i] + Math.sin(ang) * 1.05);
+    const prop = this.world.getProp(tx, ty);
+    if (prop === PROP_TREE_PINE || prop === PROP_TREE_OAK) {
+      const left = this.world.getLoot(tx, ty);
+      this.world.setLoot(tx, ty, Math.max(0, left - 1));
+      this.uWood[i] = Math.min(20, this.uWood[i] + 3);
+      this.uPlanks[i] = Math.min(12, this.uPlanks[i] + 1);
+      this.sfx.playWoodImpact(true, tx + 0.5, ty + 0.5);
+      for (let p = 0; p < 5; p++) {
+        this.spawnParticle(tx + 0.5, ty + 0.5, 0.5, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, 2.2, PART_SPLINTER, 0.8);
+      }
+      if (left - 1 <= 0) this.world.setProp(tx, ty, PROP_NONE);
+    } else if (this.world.getStruct(tx, ty) === STRUCT_WINDOW_INTACT) {
+      this.world.setStruct(tx, ty, STRUCT_WINDOW_BROKEN);
+      this.sfx.playGlassShatter(tx + 0.5, ty + 0.5);
+    }
+  }
+
+  private performPlayerZombieClaw(i: number): void {
+    const ang = Math.atan2(this.playerInput.aimWy - this.uy[i], this.playerInput.aimWx - this.ux[i]);
+    this.uAngle[i] = ang;
+    this.uAttackAnim[i] = 0.30;
+    this.uCooldown[i] = 0.52;
+
+    this.sfx.playZombieGroan(this.ux[i], this.uy[i], true);
+    this.spawnFxBurst(
+      'slash',
+      this.ux[i] + Math.cos(ang) * 0.68,
+      this.uy[i] + Math.sin(ang) * 0.68,
+      0.5,
+      ang,
+      0.25,
+      1.2,
+      'zombie',
+    );
+
+    // 1. Bite nearby humans!
+    for (let k = 0; k < this.count; k++) {
+      if (k === i || this.uHp[k] <= 0 || isZombieRole(this.uRole[k])) continue;
+      if (Math.hypot(this.ux[k] - this.ux[i], this.uy[k] - this.uy[i]) <= 1.65) {
+        if (this.hasLineOfSight(this.ux[i], this.uy[i], this.ux[k], this.uy[k])) {
+          this.zombieBiteHuman(i, k);
+          this.uKills[i]++;
+        }
+      }
+    }
+
+    // 2. Smash doors, barricaded windows, fences & vehicles right in front of the player zombie!
+    const tx = Math.floor(this.ux[i] + Math.cos(ang) * 0.95);
+    const ty = Math.floor(this.uy[i] + Math.sin(ang) * 0.95);
+    const barr = this.world.getBarricade(tx, ty);
+    const st = this.world.getStruct(tx, ty);
+    if (barr > 0) {
+      this.world.setBarricade(tx, ty, barr - 1);
+      this.sfx.playWoodImpact(false, tx + 0.5, ty + 0.5);
+    } else if (st === STRUCT_WINDOW_INTACT) {
+      this.world.setStruct(tx, ty, STRUCT_WINDOW_BROKEN);
+      this.sfx.playGlassShatter(tx + 0.5, ty + 0.5);
+    } else if (st === STRUCT_DOOR_CLOSED || st === STRUCT_FENCE_WOOD || st === STRUCT_SANDBAG) {
+      const hp = this.world.getStructHp(tx, ty) - 65;
+      this.sfx.playWoodImpact(false, tx + 0.5, ty + 0.5);
+      if (hp <= 0) this.world.setStruct(tx, ty, STRUCT_NONE);
+      else this.world.setStructHp(tx, ty, hp);
+    }
+
+    for (const v of this.world.vehicles) {
+      if (!v.exploded && Math.hypot(v.x - this.ux[i], v.y - this.uy[i]) < 2.1) {
+        this.damageVehicle(v, 36, false);
+      }
+    }
+  }
+
+  public playerCycleWeapon(): void {
+    const i = this.getControlledIndex();
+    if (i < 0 || isZombieRole(this.uRole[i])) return;
+    const order = [WPN_AXE, WPN_PISTOL, WPN_SHOTGUN, WPN_RIFLE, WPN_BAT];
+    const next = order[(order.indexOf(this.uWeapon[i]) + 1) % order.length];
+    this.uWeapon[i] = next;
+    if (WEAPONS[next].isGun && this.uAmmo[i] === 0) {
+      this.uAmmo[i] = 24;
+    }
+    this.sfx.playPickup(this.ux[i], this.uy[i]);
+  }
+
+  public playerInteract(): void {
+    const i = this.getControlledIndex();
+    if (i < 0) return;
+    if (isZombieRole(this.uRole[i])) {
+      this.performPlayerZombieClaw(i);
+      return;
+    }
+
+    const gx = Math.floor(this.ux[i]);
+    const gy = Math.floor(this.uy[i]);
+
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const tx = gx + dx;
+        const ty = gy + dy;
+        const st = this.world.getStruct(tx, ty);
+
+        // 1. Toggle Closed/Open Door!
+        if (st === STRUCT_DOOR_CLOSED) {
+          this.world.setStruct(tx, ty, STRUCT_DOOR_OPEN);
+          this.sfx.playWoodImpact(true, tx + 0.5, ty + 0.5);
+          return;
+        }
+        if (st === STRUCT_DOOR_OPEN && (dx !== 0 || dy !== 0)) {
+          this.world.setStruct(tx, ty, STRUCT_DOOR_CLOSED);
+          this.sfx.playWoodImpact(true, tx + 0.5, ty + 0.5);
+          return;
+        }
+
+        // 2. Barricade intact/broken window if carrying planks!
+        if ((st === STRUCT_WINDOW_INTACT || st === STRUCT_WINDOW_BROKEN) && this.uPlanks[i] > 0 && this.world.getBarricade(tx, ty) < 4) {
+          this.uPlanks[i]--;
+          this.world.setBarricade(tx, ty, this.world.getBarricade(tx, ty) + 1);
+          this.sfx.playWoodImpact(true, tx + 0.5, ty + 0.5);
+          return;
+        }
+
+        // 3. Loot nearby container / pile / tree!
+        const prop = this.world.getProp(tx, ty);
+        const loot = this.world.getLoot(tx, ty);
+        if (prop !== PROP_NONE && loot > 0) {
+          this.world.setLoot(tx, ty, loot - 1);
+          if (prop === PROP_TREE_PINE || prop === PROP_TREE_OAK || prop === PROP_LOG_PILE) {
+            this.uWood[i] = Math.min(24, this.uWood[i] + 4);
+            this.uPlanks[i] = Math.min(12, this.uPlanks[i] + 2);
+            this.sfx.playWoodImpact(true, tx + 0.5, ty + 0.5);
+            if (loot - 1 <= 0) this.world.setProp(tx, ty, PROP_NONE);
+          } else {
+            this.uAmmo[i] += 20;
+            this.uFood[i] = Math.min(12, this.uFood[i] + 2);
+            this.uBandages[i] = Math.min(12, this.uBandages[i] + 2);
+            this.uPlanks[i] = Math.min(12, this.uPlanks[i] + 2);
+            this.uWood[i] = Math.min(24, this.uWood[i] + 3);
+            this.sfx.playPickup(this.ux[i], this.uy[i]);
+          }
+          return;
+        }
+      }
+    }
+  }
+
+  public playerHealSelf(): void {
+    const i = this.getControlledIndex();
+    if (i < 0 || isZombieRole(this.uRole[i])) return;
+    if (this.uBandages[i] > 0) {
+      this.uBandages[i]--;
+      this.uHp[i] = Math.min(this.uMaxHp[i], this.uHp[i] + 45);
+      this.uMoodles[i] &= ~MOODLE_BLEEDING;
+      this.sfx.playPickup(this.ux[i], this.uy[i]);
+    } else if (this.uFood[i] > 0) {
+      this.uFood[i]--;
+      this.uHunger[i] = 0;
+      this.uHp[i] = Math.min(this.uMaxHp[i], this.uHp[i] + 28);
+      this.sfx.playPickup(this.ux[i], this.uy[i]);
+    }
+  }
+
+  public playerBuildAction(): void {
+    const i = this.getControlledIndex();
+    if (i < 0 || isZombieRole(this.uRole[i])) return;
+
+    const curB = this.world.getBuildingId(Math.floor(this.ux[i]), Math.floor(this.uy[i]));
+    if (curB >= 0) {
+      const res = this.world.expandBuildingWithNewRoom(curB);
+      if (res.ok && res.roomCenter) {
+        this.totalExpansionsBuilt++;
+        this.uWood[i] = Math.max(0, this.uWood[i] - 4);
+        this.sfx.playWoodImpact(true, res.roomCenter.x, res.roomCenter.y);
+        this.onRadioBroadcast?.(`🏗 Вы пристроили комнату «${res.label}» к «${this.world.buildings[curB].name}»!`, '#ffd466');
+        return;
+      }
+    }
+
+    // Outside: place a solid Sandbag fortification right in front of your character!
+    const ang = this.uAngle[i];
+    const bx = Math.floor(this.ux[i] + Math.cos(ang) * 1.35);
+    const by = Math.floor(this.uy[i] + Math.sin(ang) * 1.35);
+    if (this.world.getStruct(bx, by) === STRUCT_NONE) {
+      this.world.setStruct(bx, by, STRUCT_SANDBAG);
+      this.sfx.playWoodImpact(true, bx + 0.5, by + 0.5);
+    }
+  }
+
+  public playerSpecialCall(): void {
+    const i = this.getControlledIndex();
+    if (i < 0) return;
+    const zed = isZombieRole(this.uRole[i]);
+    if (zed) {
+      // Zombie Alpha Horde Roar — calls every zombie within 42 tiles to swarm with you!
+      this.sfx.playZombieGroan(this.ux[i], this.uy[i], true);
+      this.emitSound(this.ux[i], this.uy[i], 42, '#80ed99', '🧟 ЗОВ ОРДЫ!');
+      for (let k = 0; k < this.count; k++) {
+        if (k !== i && isZombieRole(this.uRole[k]) && Math.hypot(this.ux[k] - this.ux[i], this.uy[k] - this.uy[i]) < 42) {
+          this.uGoalX[k] = this.playerInput.aimWx;
+          this.uGoalY[k] = this.playerInput.aimWy;
+          this.uGoalTimer[k] = 10.0;
+        }
+      }
+      this.onRadioBroadcast?.('🧟 РЁВ ВОЖАКА ОРДЫ! Все мертвецы в округе стягиваются к вашей цели!', '#80ed99');
+    } else {
+      // Human Squad Radio Rally!
+      this.sfx.playUiClick(740);
+      let rallied = 0;
+      for (let k = 0; k < this.count; k++) {
+        if (k !== i && !isZombieRole(this.uRole[k]) && this.uRole[k] !== ROLE_RAIDER) {
+          if (Math.hypot(this.ux[k] - this.ux[i], this.uy[k] - this.uy[i]) < 26) {
+            this.uGoalX[k] = this.ux[i] + (Math.random() - 0.5) * 3;
+            this.uGoalY[k] = this.uy[i] + (Math.random() - 0.5) * 3;
+            this.uGoalTimer[k] = 8.0;
+            rallied++;
+          }
+        }
+      }
+      this.onRadioBroadcast?.(`📻 Рация отряда: ${rallied} бойцов стягиваются к вашей позиции!`, '#4cc9f0');
+    }
   }
 }
