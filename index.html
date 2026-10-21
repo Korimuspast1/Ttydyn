@@ -1,20 +1,1824 @@
 <!doctype html>
 <html lang="ru">
-  <head>
-    <meta charset="UTF-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover"
-    />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="theme-color" content="#1b130f" />
-    <title>WorldBox Песочница — 2D Пиксельный Симулятор Бога</title>
-  </head>
-  <body>
-    <canvas id="game-canvas"></canvas>
-    <div id="ui-layer"></div>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>PROJECT ZOMBOIDED - Survive. Loot. Die.</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;background:#0d0a08;overflow:hidden;font-family:'Courier New',monospace;image-rendering:pixelated}
+  canvas{display:block;image-rendering:pixelated}
+  #wrap{position:relative;width:100vw;height:100vh;overflow:hidden}
+  #game{position:absolute;inset:0;width:100%;height:100%;background:#1e2f1a}
+  /* HUD */
+  #hud{position:absolute;inset:0;pointer-events:none;user-select:none}
+  #topBar{position:absolute;top:0;left:0;right:0;height:56px;background:linear-gradient(#2a2018,#1a140f);border-bottom:4px solid #0f0d0a;display:flex;align-items:center;gap:10px;padding:6px 10px;pointer-events:auto}
+  .pixelBox{border:3px solid #000;background:#2b2117;box-shadow:inset 2px 2px 0 #4a3a28, inset -2px -2px 0 #1a120c}
+  #healthWrap{width:220px;height:34px;display:flex;align-items:center;gap:6px;padding:4px 6px}
+  #healthBar{flex:1;height:14px;background:#111;border:2px solid #000;position:relative;overflow:hidden}
+  #healthFill{height:100%;background:linear-gradient(#b82222,#7a0f0f);width:100%;transition:width .2s}
+  #staminaBar{position:absolute;bottom:3px;left:0;right:0;height:4px;background:#111}
+  #staminaFill{height:100%;background:#3fa9d1;width:100%}
+  #moodles{display:flex;gap:4px;flex-wrap:wrap;max-width:420px}
+  .moodle{width:32px;height:32px;border:2px solid #000;background:#1a120c;display:flex;align-items:center;justify-content:center;font-size:16px;position:relative}
+  .moodle.bad{border-color:#8a1a1a;box-shadow:0 0 6px #ff000040}
+  .moodle.warn{border-color:#8a6a1a}
+  .moodle.good{border-color:#2a5a2a}
+  .moodle span.tip{position:absolute;top:36px;left:50%;transform:translateX(-50%);background:#000;color:#fff;font-size:10px;padding:2px 4px;white-space:nowrap;opacity:0;pointer-events:none;border:1px solid #444}
+  .moodle:hover span.tip{opacity:1}
+  #clockBox{min-width:160px;height:42px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#d9c7a5;line-height:1}
+  #clockTime{font-weight:900;font-size:16px;letter-spacing:1px;text-shadow:1px 1px 0 #000}
+  #clockDate{font-size:10px;opacity:.9}
+  #rightHud{margin-left:auto;display:flex;gap:6px;align-items:center}
+  #minimap{width:86px;height:86px;background:#0f0d0a;border:3px solid #000;position:relative;overflow:hidden}
+  #weatherIcon{width:42px;height:42px;display:flex;align-items:center;justify-content:center;font-size:20px}
+  /* bottom */
+  #bottomBar{position:absolute;bottom:0;left:0;right:0;height:44px;background:#1a140f;border-top:4px solid #000;display:flex;align-items:center;gap:8px;padding:4px 8px}
+  #hotbar{display:flex;gap:4px}
+  .slot{width:36px;height:36px;background:#2b2117;border:2px solid #000;display:flex;align-items:center;justify-content:center;font-size:18px;position:relative;cursor:pointer}
+  .slot.active{border-color:#e8d5a0;box-shadow:0 0 8px #ffd86a80}
+  .slot small{position:absolute;bottom:0;right:1px;font-size:8px;background:#000;color:#fff;padding:0 2px}
+  #msgLog{flex:1;height:32px;background:#0f0d0a;border:2px solid #000;color:#c9b89a;font-size:11px;padding:4px 6px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  #controlsHint{font-size:9px;color:#8a7a65;line-height:1.1;text-align:right}
+  /* crosshair */
+  #cross{position:absolute;width:18px;height:18px;pointer-events:none;transform:translate(-50%,-50%)}
+  #cross:before,#cross:after{content:'';position:absolute;background:#fff;box-shadow:0 0 2px #000}
+  #cross:before{left:8px;top:0;width:2px;height:18px;opacity:.9}
+  #cross:after{left:0;top:8px;width:18px;height:2px;opacity:.9}
+  /* Panels */
+  .panel{position:absolute;background:#1e1a14f2;border:4px solid #000;box-shadow:4px 4px 0 #0008;color:#e6d5b8;display:none;pointer-events:auto}
+  #inventory{left:50%;top:50%;transform:translate(-50%,-50%);width:760px;max-width:96vw;max-height:92vh;overflow:auto;padding:10px;z-index:20}
+  #inventory h2{font-size:14px;margin-bottom:6px;color:#ffd86a}
+  .invGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .invCol{border:2px solid #000;background:#2b2117;padding:6px}
+  .invCol h3{font-size:11px;margin-bottom:4px;background:#0f0d0a;padding:3px 4px;border:1px solid #333}
+  .itemRow{display:flex;align-items:center;gap:6px;padding:4px;border:1px solid transparent;cursor:pointer;font-size:12px}
+  .itemRow:hover{background:#3a2f1f;border-color:#5a4a30}
+  .itemRow.equip{background:#3d2a0f;border-color:#c9a23a}
+  .btnSmall{border:2px solid #000;background:#3a5a1e;color:#fff;padding:4px 8px;font-size:11px;cursor:pointer;font-family:inherit;box-shadow:inset 1px 1px 0 #6a8a3a}
+  .btnSmall:active{transform:translate(1px,1px)}
+  .btnSmall.red{background:#7a1e1e}
+  .btnSmall.gold{background:#8a6a0f}
+  #help{right:10px;top:66px;width:240px;padding:8px;font-size:11px;line-height:1.3;z-index:5}
+  #help b{color:#ffd86a}
+  /* Menus */
+  .overlay{position:absolute;inset:0;background:#0d0a08ef;display:flex;align-items:center;justify-content:center;z-index:50;padding:20px}
+  .menuCard{background:#1a140f;border:4px solid #000;box-shadow:8px 8px 0 #000, inset 0 0 0 2px #3a2a1a;padding:18px;width:680px;max-width:96vw;color:#e6d5b8;text-align:center}
+  .title{font-size:34px;font-weight:900;letter-spacing:2px;color:#d12a1a;text-shadow:3px 3px 0 #000, 0 0 10px #ff000060;line-height:1}
+  .subtitle{font-size:12px;color:#c9a86a;letter-spacing:3px;margin:6px 0 12px}
+  .pixelBtn{border:3px solid #000;background:#2b2117;color:#ffd86a;padding:10px 14px;font-size:14px;font-weight:800;cursor:pointer;box-shadow:inset 2px 2px 0 #5a4a30, 4px 4px 0 #000;width:100%;margin:6px 0;font-family:inherit;letter-spacing:1px}
+  .pixelBtn:hover{background:#3a2f1f}
+  .pixelBtn.primary{background:#3a5a1e;color:#fff}
+  .statsGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;text-align:left;margin:10px 0;font-size:12px}
+  .statsGrid div{background:#0f0d0a;border:2px solid #000;padding:6px}
+  #seedInfo{font-size:10px;color:#8a7a65;margin-top:6px}
+  .tag{display:inline-block;border:1px solid #5a4a30;background:#0f0d0a;padding:2px 6px;font-size:10px;margin:2px}
+  /* death */
+  #death{display:none}
+  #death .title{color:#fff}
+  /* mobile */
+  #mobilePad{position:absolute;bottom:60px;left:10px;display:none;gap:6px;pointer-events:auto}
+  .padBtn{width:52px;height:52px;background:#1a140fbb;border:3px solid #000;color:#fff;font-size:10px;display:flex;align-items:center;justify-content:center}
+  @media(max-width:900px){#help{display:none}#moodles{max-width:220px}#clockBox{min-width:120px}#mobilePad{display:flex}}
+</style>
+</head>
+<body>
+<div id="wrap">
+<canvas id="game"></canvas>
+
+<div id="hud">
+  <div id="topBar">
+    <div id="healthWrap" class="pixelBox">
+      <div style="font-size:14px">♥</div>
+      <div style="flex:1">
+        <div style="font-size:9px;color:#c9b89a;display:flex;justify-content:space-between"><span>HEALTH</span><span id="hpText">100</span></div>
+        <div id="healthBar"><div id="healthFill"></div><div id="staminaBar"><div id="staminaFill"></div></div></div>
+      </div>
+    </div>
+    <div id="moodles"></div>
+    <div id="rightHud">
+      <div id="weatherIcon" class="pixelBox" title="weather">☀️</div>
+      <div id="clockBox" class="pixelBox"><div id="clockTime">09:00</div><div id="clockDate">Day 1 • JUL 9</div></div>
+      <div id="minimap"><canvas id="mini" width="80" height="80"></canvas></div>
+    </div>
+  </div>
+  <div id="bottomBar">
+    <div id="hotbar"></div>
+    <div id="msgLog">Welcome to Knox County. 1993. This is how you died.</div>
+    <div id="controlsHint"><b>WASD</b> move <b>SHIFT</b> run <b>SPACE</b> sneak <b>E</b> interact <b>I</b> inv <b>F</b> light <b>LMB</b> attack</div>
+  </div>
+  <div id="cross"></div>
+  <div id="help" class="panel" style="display:block">
+    <b>HOW TO SURVIVE</b><br>
+    • Loot houses (E), barricade doors/windows (plank+nails+hammer)<br>
+    • Cook raw food on stove, collect rain water<br>
+    • Sleep on bed (E) but zombies hear you<br>
+    • Sneak = less seen/heard. Light attracts.<br>
+    • Bite = slow death. Bleed = bandage fast!<br>
+    • <b style="color:#ff6b6b">RUN = noise = HORDE</b>
+  </div>
+  <div id="mobilePad">
+    <div class="padBtn" id="mRun">RUN</div>
+    <div class="padBtn" id="mSneak">SNEAK</div>
+    <div class="padBtn" id="mAtk">ATK</div>
+    <div class="padBtn" id="mInt">E</div>
+  </div>
+</div>
+
+<!-- Inventory -->
+<div id="inventory" class="panel">
+  <h2>INVENTORY <span id="invWeight" style="float:right;font-size:11px;background:#000;padding:2px 6px">0/12 kg</span></h2>
+  <div class="invGrid">
+    <div class="invCol"><h3>🎒 BACKPACK <button class="btnSmall" onclick="game.sortInv()">SORT</button></h3><div id="invList"></div></div>
+    <div class="invCol">
+      <h3>📊 STATS & SKILLS</h3>
+      <div id="skillList" style="font-size:11px;line-height:1.5"></div>
+      <h3 style="margin-top:6px">NEARBY</h3>
+      <div id="nearbyList" style="font-size:11px"></div>
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+        <button class="btnSmall" onclick="game.craftBandage()">Craft Rag [Rag]</button>
+        <button class="btnSmall" onclick="game.tryBarricade()">Barricade Door/Window</button>
+        <button class="btnSmall gold" onclick="game.trySleep()">Sleep (Bed Only)</button>
+        <button class="btnSmall" onclick="game.cookFood()">Cook on Stove</button>
+        <button class="btnSmall" onclick="game.collectWater()">Collect Water</button>
+      </div>
+    </div>
+  </div>
+  <div style="text-align:right;margin-top:8px"><button class="btnSmall red" onclick="game.toggleInv()">CLOSE [I]</button></div>
+</div>
+
+<!-- Start Menu -->
+<div id="start" class="overlay">
+  <div class="menuCard">
+    <div class="title">PROJECT ZOMBOIDED</div>
+    <div class="subtitle">THIS IS HOW YOU DIED • PIXEL SURVIVAL SIM</div>
+    <div style="text-align:left;background:#0f0d0a;border:2px solid #222;padding:10px;font-size:11px;line-height:1.6;margin:10px 0">
+      <b style="color:#ffd86a">PERMADEATH • RANDOM WORLD • NO HEROES</b><br>
+      200×200 tiles, procedural city, enterable houses, barricades, infection, panic, day/night, electricity/water shutoff, helicopter hordes.<br>
+      <span style="color:#8a6a3a">You are not a hero. You will likely die.</span>
+      <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">
+        <span class="tag">200×200 WORLD</span><span class="tag">LOOT RANDOM</span><span class="tag">VISION CONE</span><span class="tag">SNEAK & NOISE</span><span class="tag">BITE=INFECTION</span><span class="tag">HORDE MIGRATION</span><span class="tag">BARRICADING</span><span class="tag">DAY/NIGHT</span><span class="tag">REINCARNATE SAME WORLD</span>
+      </div>
+    </div>
+    <button class="pixelBtn primary" onclick="game.newGame(false)">▶ NEW GAME — RANDOM WORLD</button>
+    <button class="pixelBtn" onclick="game.newGame(true)" id="continueBtn" style="display:none">↻ CONTINUE SAME WORLD (Reincarnate)</button>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+      <button class="pixelBtn" onclick="document.getElementById('seedInput').value=Math.floor(Math.random()*999999);">🎲 RANDOM SEED</button>
+      <label style="display:flex;align-items:center;background:#0f0d0a;border:2px solid #000;padding:6px;gap:6px"><span style="font-size:10px">SEED</span><input id="seedInput" value="1993" style="flex:1;background:#000;color:#ffd86a;border:1px solid #333;padding:6px;font-family:inherit"></label>
+    </div>
+    <div id="seedInfo">Seed randoms everything: streets, houses, loot, zombie density, weather, shutoff days.</div>
+    <div style="margin-top:10px;font-size:10px;color:#8a7a65">Controls: WASD/Arrows Move • Mouse Aim & LMB Swing • E Interact • I Inventory • Space Sneak • Shift Sprint • F Flashlight • R Drop • H Suicide (debug)</div>
+  </div>
+</div>
+
+<!-- Death -->
+<div id="death" class="overlay">
+  <div class="menuCard" style="border-color:#5a0f0f">
+    <div class="title" style="color:#ff3b3b">YOU DIED</div>
+    <div id="deathCause" style="font-size:13px;margin:8px 0;background:#000;padding:8px;border:1px solid #400">Cause: Unknown</div>
+    <div class="statsGrid">
+      <div>⏳ Survived: <b id="dDays">0 days</b> <span id="dHours"></span></div>
+      <div>🧟 Killed: <b id="dKills">0</b></div>
+      <div>🍖 Hunger: <b id="dHunger">-</b> • 💧 Thirst <b id="dThirst">-</b></div>
+      <div>🏠 Buildings looted: <b id="dLoot">0</b></div>
+    </div>
+    <div style="font-size:11px;color:#c9a86a;margin:6px 0">Your previous character now wanders as a zombie in the same world. Your base and loot remain.</div>
+    <button class="pixelBtn primary" onclick="game.respawnSameWorld()">↻ NEW CHARACTER — SAME WORLD</button>
+    <button class="pixelBtn" onclick="game.newGame(false)">🎲 NEW WORLD (NEW SEED)</button>
+    <button class="pixelBtn" style="background:#111;color:#aaa" onclick="location.reload()">MENU</button>
+  </div>
+</div>
+
+</div>
+
+<script>
+/* ========= PROJECT ZOMBOIDED - single file game ========= */
+/* Architecture: RNG -> WorldGen -> Entities -> Systems -> Game Loop -> Render */
+const TILE=32;
+const WORLD_W=200, WORLD_H=200;
+const VIEW_PADDING=2;
+
+const COLORS={
+  grass:'#2e4d1e',grass2:'#3a5f26',grass3:'#253d18',
+  dirt:'#3e3426', dirt2:'#4a3d2e',
+  road:'#2a2a2a',roadLine:'#d9c85a',roadEdge:'#3a3a3a',
+  sidewalk:'#9a9a8a', sidewalk2:'#8a8a7a',
+  floor:'#c2b090',floor2:'#b8a07a',floorDark:'#8a7a5a',
+  wall:'#5a4a3a',wallTop:'#6e5a46',wallDark:'#3d2f22',
+  wood:'#6e4a20', wood2:'#8a5a2a',
+  tree:'#1a3a1a', tree2:'#2a5a0a', treeTrunk:'#3e2a14',
+  water:'#2a4a6a',
+  zombie:'#5a6a3a', zombie2:'#4a5a2a',
+  player:'#3a6a9a', playerSkin:'#d9b18a',
+  night:'#0a0f1a'
+};
+
+const ITEM_DB={
+  // weapons
+  knife:{name:'Kitchen Knife',w:0.7,dmg:12,range:1.2,dur:40,type:'blade',icon:'🔪'},
+  crowbar:{name:'Crowbar',w:1.2,dmg:15,range:1.4,dur:120,type:'blunt',icon:'🔧'},
+  axe:{name:'Wood Axe',w:1.6,dmg:22,range:1.4,dur:60,type:'blade',icon:'🪓'},
+  bat:{name:'Baseball Bat',w:1.4,dmg:18,range:1.5,dur:80,type:'blunt',icon:'🏏'},
+  plank:{name:'Plank',w:0.9,dmg:8,range:1.3,dur:30,type:'blunt',icon:'🪵'},
+  hammer:{name:'Hammer',w:0.8,dmg:10,range:1.1,dur:100,type:'blunt',icon:'🔨'},
+  // tools
+  nails:{name:'Box of Nails',w:0.5,dmg:0,type:'tool',icon:'📌'},
+  tape:{name:'Duct Tape',w:0.3,dmg:0,type:'tool',icon:'🧵'},
+  // food
+  beans:{name:'Canned Beans',w:0.6,hunger:30,thirst:-2,fresh:999,icon:'🥫'},
+  chips:{name:'Chips',w:0.3,hunger:15,thirst:-8,fresh:999,icon:'🍟'},
+  apple:{name:'Apple',w:0.4,hunger:12,thirst:4,fresh:5,icon:'🍎'},
+  bread:{name:'Bread',w:0.5,hunger:20,thirst:-5,fresh:3,icon:'🍞'},
+  meat_raw:{name:'Raw Meat',w:0.7,hunger:10,thirst:0,fresh:2,raw:true,icon:'🥩'},
+  meat_cooked:{name:'Cooked Meat',w:0.6,hunger:32,thirst:0,fresh:3,icon:'🍖'},
+  water:{name:'Water Bottle',w:0.9,thirst:35,hunger:0,fresh:999,icon:'💧'},
+  whiskey:{name:'Whiskey',w:0.8,thirst:10,panic:-20,hunger:0,icon:'🥃'},
+  // med
+  bandage:{name:'Bandage',w:0.2,icon:'🩹'},
+  rag:{name:'Rag',w:0.2,icon:'🧻'},
+  disinfect:{name:'Disinfectant',w:0.4,icon:'🧴'},
+  // utility
+  flashlight:{name:'Flashlight',w:0.5,icon:'🔦'},
+  battery:{name:'Battery',w:0.2,icon:'🔋'},
+  book:{name:'Skill Book',w:0.6,icon:'📚'},
+};
+
+// ---------- RNG ----------
+class RNG{
+  constructor(seed){this.s=seed>>>0||1}
+  next(){ this.s=(this.s+0x6D2B79F5|0); let t=Math.imul(this.s^this.s>>>15,this.s|1); t^=t+Math.imul(t^ t>>>7,61|t); return ((t ^ t>>>14)>>>0)/4294967296 }
+  range(a,b){return a+this.next()*(b-a)}
+  int(a,b){return Math.floor(this.range(a,b+1))}
+  pick(a){return a[this.int(0,a.length-1)]}
+  chance(p){return this.next()<p}
+  shuffle(a){for(let i=a.length-1;i>0;i--){let j=this.int(0,i); [a[i],a[j]]=[a[j],a[i]]} return a}
+}
+let rng = new RNG(1993);
+
+// ---------- SOUND (procedural WebAudio) ----------
+let audioCtx=null;
+function beep(freq=440,dur=0.08,vol=0.2,type='square'){
+  try{
+    if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+    if(audioCtx.state==='suspended') audioCtx.resume();
+    let o=audioCtx.createOscillator(), g=audioCtx.createGain();
+    o.type=type; o.frequency.value=freq;
+    g.gain.value=vol;
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(); g.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+dur);
+    o.stop(audioCtx.currentTime+dur+0.02);
+  }catch(e){}
+}
+function sndSwing(){ beep(180,0.06,0.15,'sawtooth') }
+function sndHit(){ beep(90,0.12,0.25,'square') }
+function sndBite(){ beep(60,0.3,0.3,'sawtooth'); setTimeout(()=>beep(40,0.2,0.2,'square'),80)}
+function sndStep(){ beep(120,0.04,0.05,'triangle')}
+function sndAlarm(){ beep(900,0.2,0.18,'square'); setTimeout(()=>beep(700,0.2,0.18,'square'),180)}
+function sndHeli(){ beep(70,1.2,0.12,'sawtooth'); beep(110,1.2,0.08,'square')}
+
+// ---------- WORLD ----------
+let world=null; // 2D array [y][x]
+let doors=[],windows=[],containers=[],cars=[],trees=[],furniture=[];
+let explored, visible;
+let worldSeed=1993;
+let electricityOn=true, waterOn=true, shutoffElecDay=6, shutoffWaterDay=4;
+
+function makeWorld(seed){
+  worldSeed=seed; rng=new RNG(seed);
+  world=[]; doors=[]; windows=[]; containers=[]; cars=[]; trees=[]; furniture=[];
+  explored=Array.from({length:WORLD_H},()=>Array(WORLD_W).fill(false));
+  visible=Array.from({length:WORLD_H},()=>Array(WORLD_W).fill(false));
+  // init grass
+  for(let y=0;y<WORLD_H;y++){
+    world[y]=[];
+    for(let x=0;x<WORLD_W;x++){
+      let isForestEdge = (x<12||x>=WORLD_W-12||y<12||y>=WORLD_H-12) && rng.chance(0.65);
+      world[y][x]={x,y,type:isForestEdge?'forest':'grass', solid:false, roof:false, buildingId:-1, doorIdx:-1, windowIdx:-1, containerIdx:-1, furniture:null, decor:0, shade:0};
+    }
+  }
+  // roads grid
+  const blockSize=22, roadW=4;
+  // vertical roads
+  for(let x=blockSize;x<WORLD_W;x+=blockSize+roadW){
+    for(let y=0;y<WORLD_H;y++){
+      for(let w=0;w<roadW;w++){
+        if(x+w<WORLD_W){
+          let t = (w===0||w===roadW-1)?'sidewalk':'road';
+          if(world[y][x+w].type!=='forest') world[y][x+w].type=t;
+        }
+      }
+    }
+  }
+  // horizontal roads
+  for(let y=blockSize;y<WORLD_H;y+=blockSize+roadW){
+    for(let x=0;x<WORLD_W;x++){
+      for(let w=0;w<roadW;w++){
+        if(y+w<WORLD_H){
+          let t = (w===0||w===roadW-1)?'sidewalk':'road';
+          // keep crossing as road
+          let cur=world[y+w][x].type;
+          if(cur==='sidewalk') t='road';
+          world[y+w][x].type=t;
+        }
+      }
+    }
+  }
+  // road lines
+  for(let y=0;y<WORLD_H;y++) for(let x=0;x<WORLD_W;x++) if(world[y][x].type==='road' && rng.chance(0.05)) world[y][x].decor=1; // line
+
+  // identify blocks and place buildings/parks
+  let buildingId=0;
+  for(let by=0; by<WORLD_H; by+=blockSize+roadW){
+    for(let bx=0; bx<WORLD_W; bx+=blockSize+roadW){
+      // block interior bounds
+      let x0=bx, y0=by, x1=Math.min(bx+blockSize-1, WORLD_W-1), y1=Math.min(by+blockSize-1, WORLD_H-1);
+      // skip if contains road - we already placed roads, interior is block area before road
+      // Actually our iteration step includes roads, but we want blocks between roads
+      // So offset: blocks start at 0, road at blockSize
+      // already covered: block is 0..21, road 22..25, next block 26..47 etc.
+      // So our loop with step already aligns, but x0,y0 are block starts.
+      if(x1-x0<8 || y1-y0<8) continue;
+      // ensure not on main road seam: check corners are not road
+      // decide block type
+      let r=rng.next();
+      if(r<0.14){ // park
+        // park grass with trees and benches
+        for(let y=y0+1;y<y1;y++) for(let x=x0+1;x<x1;x++) if(world[y][x].type==='grass'){ world[y][x].type='parkGrass'; if(rng.chance(0.06)) addTree(x,y,true); }
+        if(rng.chance(0.7)){
+          let cx=Math.floor((x0+x1)/2), cy=Math.floor((y0+y1)/2);
+          furniture.push({x:cx,y:cy,type:'bench'});
+          furniture.push({x:cx+1,y:cy,type:'bench'});
+        }
+      } else {
+        // houses
+        let houseCount = rng.int(1,4);
+        // try to place non-overlapping houses
+        let placed=[];
+        for(let h=0;h<houseCount;h++){
+          let attempts=0, ok=false;
+          while(attempts<12 && !ok){
+            attempts++;
+            let w=rng.int(7,12), ht=rng.int(7,10);
+            let x=rng.int(x0+1, x1-w-1), y=rng.int(y0+1, y1-ht-1);
+            // check overlap with placed or road
+            let overlap=false;
+            for(let p of placed) if(!(x+w < p.x-1 || x > p.x+p.w+1 || y+ht < p.y-1 || y > p.y+p.h+1)) overlap=true;
+            if(overlap) continue;
+            // check tiles are not road
+            let bad=false;
+            for(let yy=y-1;yy<y+ht+1;yy++) for(let xx=x-1;xx<x+w+1;xx++) if(world[yy]&&world[yy][xx]&&world[yy][xx].type==='road') bad=true;
+            if(bad) continue;
+            // place building
+            placeHouse(x,y,w,ht,buildingId++);
+            placed.push({x,y,w,h:ht});
+            ok=true;
+          }
+        }
+        // cars and bins in block
+        if(rng.chance(0.6)){
+          let cx=rng.int(x0+1,x1-2), cy=rng.int(y0+1,y1-2);
+          if(world[cy][cx].type==='grass' || world[cy][cx].type==='parkGrass') addCar(cx,cy);
+        }
+        if(rng.chance(0.85)){
+          let bx2=rng.int(x0+1,x1-1), by2=rng.int(y0+1,y1-1);
+          addContainer(bx2,by2, 'bin');
+        }
+        // fences around some houses
+        if(rng.chance(0.35) && placed.length>0){
+          let p=rng.pick(placed);
+          // fence rectangle around house with gate
+          let fx=p.x-2, fy=p.y-2, fw=p.w+4, fh=p.h+4;
+          let gateSide=rng.int(0,3);
+          for(let xx=fx;xx<fx+fw;xx++){
+            if(xx===fx+Math.floor(fw/2) && gateSide===0) continue;
+            if(xx>=0&&xx<WORLD_W && fy>=0&&fy<WORLD_H) if(world[fy][xx].type==='grass'||world[fy][xx].type==='parkGrass') { world[fy][xx].type='fence'; world[fy][xx].solid=true; }
+            if(fy+fh-1>=0&&fy+fh-1<WORLD_H) if(world[fy+fh-1][xx].type==='grass'||world[fy+fh-1][xx].type==='parkGrass'){ world[fy+fh-1][xx].type='fence'; world[fy+fh-1][xx].solid=true; }
+          }
+          for(let yy=fy;yy<fy+fh;yy++){
+            if(yy===fy+Math.floor(fh/2) && gateSide===1) continue;
+            if(fx>=0&&fx<WORLD_W && yy>=0&&yy<WORLD_H) if(world[yy][fx].type==='grass'||world[yy][fx].type==='parkGrass'){ world[yy][fx].type='fence'; world[fy][fx].solid=true; world[yy][fx].type='fence'; world[yy][fx].solid=true; }
+            if(fx+fw-1<WORLD_W) if(world[yy][fx+fw-1].type==='grass'||world[yy][fx+fw-1].type==='parkGrass'){ world[yy][fx+fw-1].type='fence'; world[yy][fx+fw-1].solid=true; }
+          }
+        }
+      }
+    }
+  }
+  // forest clusters inside
+  for(let i=0;i<600;i++){
+    let x=rng.int(0,WORLD_W-1), y=rng.int(0,WORLD_H-1);
+    if(world[y][x].type==='grass' && rng.chance(0.4)) addTree(x,y,false);
+  }
+  // containers for houses already done in placeHouse, add street containers
+  for(let i=0;i<40;i++){
+    let x=rng.int(0,WORLD_W-1), y=rng.int(0,WORLD_H-1);
+    if(world[y][x].type==='road' && rng.chance(0.15)) addCar(x,y);
+  }
+
+  // shutoff days random
+  shutoffElecDay=rng.int(3,9); shutoffWaterDay=rng.int(2,8);
+  electricityOn=true; waterOn=true;
+
+  // add rain collectors random near houses
+  for(let i=0;i<12;i++){
+    let x=rng.int(0,WORLD_W-1), y=rng.int(0,WORLD_H-1);
+    if(world[y][x].type==='grass') furniture.push({x,y,type:'rainCollector',water:0});
+  }
+}
+
+function addTree(x,y,isPark){
+  if(x<0||x>=WORLD_W||y<0||y>=WORLD_H) return;
+  trees.push({x,y});
+  world[y][x].type='forest';
+  world[y][x].solid=true;
+  if(!isPark && rng.chance(0.5)){
+    let nx=x+rng.int(-1,1), ny=y+rng.int(-1,1);
+    if(nx>=0&&nx<WORLD_W&&ny>=0&&ny<WORLD_H && world[ny][nx].type==='grass'){ world[ny][nx].type='forest'; world[ny][nx].solid=true; trees.push({x:nx,y:ny});}
+  }
+}
+function addCar(x,y){
+  cars.push({x,y, loot:[]});
+  // car tile is not solid for walking? make semi-solid
+  if(world[y][x]){ world[y][x].type='car'; world[y][x].solid=true; }
+  let ctr = {x,y,type:'car', items: genLoot('car')};
+  ctr.idx=containers.length; containers.push(ctr);
+  world[y][x].containerIdx=ctr.idx;
+}
+function addContainer(x,y, type){
+  if(x<0||x>=WORLD_W||y<0||y>=WORLD_H) return;
+  if(world[y][x].solid) return;
+  let ctr={x,y,type, items: genLoot(type)};
+  ctr.idx=containers.length; containers.push(ctr);
+  world[y][x].containerIdx=ctr.idx;
+}
+
+function placeHouse(x,y,w,h, bid){
+  // floor
+  for(let yy=y; yy<y+h; yy++) for(let xx=x; xx<x+w; xx++){
+    world[yy][xx].type='floor'; world[yy][xx].buildingId=bid; world[yy][xx].solid=false;
+  }
+  // perimeter walls
+  for(let xx=x; xx<x+w; xx++){
+    world[y][xx].type='wall'; world[y][xx].solid=true;
+    world[y+h-1][xx].type='wall'; world[y+h-1][xx].solid=true;
+  }
+  for(let yy=y; yy<y+h; yy++){
+    world[yy][x].type='wall'; world[yy][x].solid=true;
+    world[yy][x+w-1].type='wall'; world[yy][x+w-1].solid=true;
+  }
+  // interior walls - one vertical or horizontal
+  if(w>8 || h>8){
+    if(rng.chance(0.5) && w>9){
+      let wx = x + Math.floor(w/2);
+      for(let yy=y; yy<y+h; yy++) if(world[yy][wx].type==='floor'){ world[yy][wx].type='wall'; world[yy][wx].solid=true; }
+      // door in interior wall
+      let dy = rng.int(y+1, y+h-2);
+      world[dy][wx].type='door'; world[dy][wx].solid=false;
+      let d={x:wx,y:dy, open:false, locked:rng.chance(0.15), barricade:0, barMax:3, hp:80, buildingId:bid}; d.idx=doors.length; doors.push(d); world[dy][wx].doorIdx=d.idx;
+    } else if(h>9){
+      let wy = y + Math.floor(h/2);
+      for(let xx=x; xx<x+w; xx++) if(world[wy][xx].type==='floor'){ world[wy][xx].type='wall'; world[wy][xx].solid=true; }
+      let dx=rng.int(x+1, x+w-2);
+      world[wy][dx].type='door'; world[wy][dx].solid=false;
+      let d={x:dx,y:wy, open:false, locked:rng.chance(0.15), barricade:0, barMax:3, hp:80, buildingId:bid}; d.idx=doors.length; doors.push(d); world[wy][dx].doorIdx=d.idx;
+    }
+  }
+  // exterior doors (1-2)
+  let doorCount = rng.int(1,2);
+  for(let i=0;i<doorCount;i++){
+    let side=rng.int(0,3), dx,dy;
+    if(side===0){ dx=rng.int(x+1,x+w-2); dy=y; }
+    else if(side===1){ dx=rng.int(x+1,x+w-2); dy=y+h-1; }
+    else if(side===2){ dx=x; dy=rng.int(y+1,y+h-2); }
+    else { dx=x+w-1; dy=rng.int(y+1,y+h-2); }
+    if(world[dy][dx].type==='wall'){
+      world[dy][dx].type='door'; world[dy][dx].solid=false;
+      let d={x:dx,y:dy, open:false, locked:rng.chance(0.3), barricade:0, barMax:3, hp:100, buildingId:bid}; d.idx=doors.length; doors.push(d); world[dy][dx].doorIdx=d.idx;
+    }
+  }
+  // windows - 2-5
+  let winCount=rng.int(2,5);
+  for(let i=0;i<winCount;i++){
+    let side=rng.int(0,3), wx,wy;
+    if(side===0){ wx=rng.int(x+1,x+w-2); wy=y; }
+    else if(side===1){ wx=rng.int(x+1,x+w-2); wy=y+h-1; }
+    else if(side===2){ wx=x; wy=rng.int(y+1,y+h-2); }
+    else { wx=x+w-1; wy=rng.int(y+1,y+h-2); }
+    // avoid corners and doors
+    if(world[wy][wx].type!=='wall') continue;
+    if(Math.abs(wx-x)<1 || Math.abs(wx-(x+w-1))<1) continue;
+    if(Math.abs(wy-y)<1 || Math.abs(wy-(y+h-1))<1) continue;
+    world[wy][wx].type='window'; world[wy][wx].solid=true;
+    let wdw={x:wx,y:wy, open:false, broken:false, barricade:0, barMax:2, hp:40, curtains:rng.chance(0.6), buildingId:bid}; wdw.idx=windows.length; windows.push(wdw); world[wy][wx].windowIdx=wdw.idx;
+  }
+  // furniture & containers inside house
+  // bed
+  let bedX=x+1, bedY=y+1;
+  if(world[bedY][bedX].type==='floor'){ furniture.push({x:bedX,y:bedY,type:'bed'}); world[bedY][bedX].furniture='bed'; }
+  // stove
+  let stoveX=x+w-2, stoveY=y+1;
+  if(world[stoveY][stoveX].type==='floor'){ furniture.push({x:stoveX,y:stoveY,type:'stove'}); world[stoveY][stoveX].furniture='stove'; }
+  // fridge
+  let fridgeX=x+w-2, fridgeY=y+2;
+  if(world[fridgeY]&&world[fridgeY][fridgeX]&&world[fridgeY][fridgeX].type==='floor'){ furniture.push({x:fridgeX,y:fridgeY,type:'fridge'}); world[fridgeY][fridgeX].furniture='fridge'; addContainer(fridgeX,fridgeY,'fridge'); }
+  // shelves / kitchen counter
+  for(let k=0;k<2;k++){
+    let cx=rng.int(x+1,x+w-2), cy=rng.int(y+1,y+h-2);
+    if(world[cy][cx].type==='floor' && !world[cy][cx].furniture && !world[cy][cx].containerIdx!==-1){
+      let typ=rng.pick(['shelf','kitchen','table']);
+      furniture.push({x:cx,y:cy,type:typ});
+      world[cy][cx].furniture=typ;
+      addContainer(cx,cy, typ);
+    }
+  }
+  // garbage near house outside
+  if(rng.chance(0.5)){
+    let gx=x-1, gy=y+Math.floor(h/2);
+    if(gx>=0&&world[gy]&&world[gy][gx] && world[gy][gx].type==='grass') addContainer(gx,gy,'bin');
+  }
+}
+
+function genLoot(type){
+  let items=[];
+  const add = (id,chance)=>{ if(rng.chance(chance)) items.push(makeItem(id)) };
+  if(type==='kitchen' || type==='shelf'){
+    add('knife',0.22); add('hammer',0.12); add('plank',0.18); add('nails',0.18); add('tape',0.12);
+    add('beans',0.35); add('chips',0.3); add('apple',0.25); add('bread',0.22); add('water',0.3); add('bandage',0.18); add('rag',0.25);
+    add('flashlight',0.10); add('battery',0.15); add('book',0.08);
+  } else if(type==='fridge'){
+    add('apple',0.4); add('meat_raw',0.35); add('water',0.4); add('bread',0.2); add('whiskey',0.15);
+  } else if(type==='bin'){
+    add('plank',0.25); add('rag',0.3); add('chips',0.15); add('water',0.12); add('nails',0.15); add('knife',0.07);
+  } else if(type==='car'){
+    add('crowbar',0.12); add('bat',0.08); add('water',0.2); add('bandage',0.12); add('battery',0.18); add('flashlight',0.08);
+  } else if(type==='table'){
+    add('book',0.15); add('apple',0.18); add('whiskey',0.12); add('bandage',0.12);
+  }
+  // zombie density loot random: occasionally empty
+  if(items.length===0 && rng.chance(0.3)) items.push(makeItem(rng.pick(['chips','rag','water'])));
+  return items;
+}
+function makeItem(id){
+  let base=ITEM_DB[id];
+  let it={id, ...JSON.parse(JSON.stringify(base))};
+  if(it.fresh!==undefined){
+    it.freshLeft = it.fresh + rng.range(-0.5,0.5);
+    it.spoiled=false;
+  }
+  if(it.dur) it.durLeft=it.dur;
+  return it;
+}
+
+// ---------- ENTITIES ----------
+class Player{
+  constructor(x,y){
+    this.x=x; this.y=y; this.vx=0; this.vy=0;
+    this.angle=0;
+    this.hp=100; this.stamina=100; this.fatigue=0; this.hunger=0; this.thirst=0; this.panic=0; this.infection=0; this.bleeding=0;
+    this.inv=[]; this.weight=0; this.maxWeight=12;
+    this.skills={blunt:0,blade:0,carpentry:0,cooking:0,firstAid:0,sneaking:0,sprinting:0};
+    this.xp={blunt:0,blade:0,carpentry:0,cooking:0,firstAid:0,sneaking:0,sprinting:0};
+    this.equipped=0; this.sneaking=false; this.running=false; this.flashlightOn=false; this.battery=100;
+    this.kills=0; this.buildingsLooted=new Set(); this.timeSurvived=0;
+    this.attackCooldown=0; this.swingProgress=0; this.hurtTimer=0;
+  }
+  get equippedItem(){ return this.inv[this.equipped] }
+  addItem(it){
+    let w = it.w||0.5;
+    if(this.weight + w > this.maxWeight+0.01){ logMsg('Overburdened! Drop something.'); return false; }
+    this.inv.push(it); this.weight+=w; updateHotbar(); if(game) game.updateSkillUI();
+    return true;
+  }
+  removeItem(idx){
+    if(idx<0||idx>=this.inv.length) return null;
+    let it=this.inv[idx]; this.weight-=it.w||0.5;
+    this.inv.splice(idx,1);
+    if(this.equipped>=this.inv.length) this.equipped=Math.max(0,this.inv.length-1);
+    updateHotbar(); return it;
+  }
+  dropEquipped(){
+    if(this.inv.length===0) return;
+    let it=this.removeItem(this.equipped);
+    if(it){
+      // drop as container on ground
+      let c={x:Math.floor(this.x),y:Math.floor(this.y),type:'ground', items:[it]}; c.idx=containers.length; containers.push(c);
+      logMsg('Dropped '+it.name);
+    }
+  }
+  addXp(skill, amt){
+    this.xp[skill]+=amt;
+    let lvl=this.skills[skill];
+    let need=(lvl+1)*40;
+    if(this.xp[skill]>=need){ this.skills[skill]++; this.xp[skill]=0; logMsg('Skill up: '+skill+' Lv'+this.skills[skill]); beep(600,0.12,0.12,'sine'); }
+  }
+  damage(amt, cause){
+    this.hp-=amt; this.hurtTimer=0.3;
+    if(this.hp<=0){ this.hp=0; game.die(cause); }
+    else beep(200,0.12,0.18,'square');
+  }
+  update(dt){
+    this.timeSurvived+=dt;
+    // stamina
+    let moving = Math.hypot(this.vx,this.vy)>0.01;
+    if(this.running && moving){ this.stamina-=18*dt; if(this.stamina<0) this.stamina=0; this.addXp('sprinting', dt*2); }
+    else if(this.sneaking && moving){ this.stamina-=2*dt; this.addXp('sneaking', dt*3); }
+    else { this.stamina+=10*dt; if(this.stamina>100) this.stamina=100; }
+    // fatigue
+    this.fatigue+=0.6*dt; if(this.fatigue>100) this.fatigue=100;
+    // hunger/thirst
+    this.hunger+=0.35*dt; this.thirst+=0.5*dt;
+    if(this.hunger>100) this.hunger=100;
+    if(this.thirst>100) this.thirst=100;
+    // health effects
+    if(this.hunger>80) this.hp-=0.6*dt;
+    if(this.thirst>85) this.hp-=1.0*dt;
+    if(this.bleeding>0){ this.hp-= (1+this.bleeding*0.04)*dt; this.bleeding+=2*dt; if(this.bleeding>100) this.bleeding=100; }
+    if(this.infection>0){ this.infection+=0.9*dt; this.hp-=0.7*dt; this.panic=Math.min(100,this.panic+0.3*dt); if(this.infection>=100) this.hp-=2*dt; }
+    // panic decays slowly, increases near zombies
+    this.panic-=1.2*dt; if(this.panic<0) this.panic=0;
+    if(this.fatigue>70) this.stamina*=0.95;
+    // battery drain
+    if(this.flashlightOn && electricityOn===false){ // only works with battery at night? we allow always but drain
+      this.battery-=2*dt; if(this.battery<=0){ this.battery=0; this.flashlightOn=false; logMsg('Flashlight battery dead!'); }
+    } else if(this.flashlightOn){ this.battery-=0.8*dt; if(this.battery<=0){ this.battery=0; this.flashlightOn=false; }}
+    // regen tiny
+    if(this.hunger<40 && this.thirst<40 && this.bleeding===0 && this.infection<10) this.hp+=0.8*dt;
+    if(this.hp>100) this.hp=100;
+    if(this.attackCooldown>0) this.attackCooldown-=dt;
+    if(this.swingProgress>0) this.swingProgress-=dt*6;
+    // death by neglect
+    if(this.hp<=0) game.die('You succumbed');
+    // check building looted tracking
+    let t=world[Math.floor(this.y)]?.[Math.floor(this.x)];
+    if(t && t.buildingId>=0) this.buildingsLooted.add(t.buildingId);
+  }
+}
+
+class Zombie{
+  constructor(x,y, prevPlayer=false){
+    this.x=x; this.y=y; this.hp=35+Math.random()*20; this.state='wander'; this.targetX=x; this.targetY=y;
+    this.vx=0; this.vy=0; this.wanderTimer=0; this.seeTimer=0; this.attackCooldown=0; this.prevPlayer=prevPlayer;
+    this.speed=0.6+Math.random()*0.5; this.hitFlash=0;
+  }
+  update(dt, player){
+    if(this.hp<=0) return;
+    this.hitFlash=Math.max(0,this.hitFlash-dt);
+    if(this.attackCooldown>0) this.attackCooldown-=dt;
+    let dx=player.x-this.x, dy=player.y-this.y, dist=Math.hypot(dx,dy);
+    // detection
+    let canSee=false, canHear=false;
+    let hearingRange = player.running?12: player.sneaking?3.5:6;
+    if(dist<hearingRange+2){
+      // noise from movement
+      let moveNoise = player.running?1: player.sneaking?0.2:0.5;
+      if(Math.hypot(player.vx,player.vy)>0.1 && dist<hearingRange* (moveNoise*2)) canHear=true;
+    }
+    // global noise events
+    if(game.noisePos && game.noiseTimer>0){
+      let ndx=game.noisePos.x-this.x, ndy=game.noisePos.y-this.y, nd=Math.hypot(ndx,ndy);
+      if(nd<game.noiseRadius) canHear=true;
+    }
+    // vision
+    let visionRange = 8;
+    if(player.running) visionRange=11;
+    if(player.sneaking) visionRange=4.5;
+    if(!player.sneaking && game.isNight && !player.flashlightOn) visionRange*=0.6;
+    if(player.flashlightOn) visionRange+=2;
+    // panic increases visibility? not
+    // line of sight check (wall occlusion simplified)
+    let los=true;
+    if(dist<visionRange){
+      // ray march
+      let steps=Math.ceil(dist*2);
+      for(let s=1;s<steps;s++){
+        let t=s/steps, cx=Math.floor(this.x+dx*t), cy=Math.floor(this.y+dy*t);
+        if(cx<0||cy<0||cx>=WORLD_W||cy>=WORLD_H) continue;
+        let tile=world[cy][cx];
+        if(tile.type==='wall' || tile.type==='fence' || tile.type==='forest'){ los=false; break; }
+        if(tile.type==='window' && !tileWindowBroken(cx,cy) && !tileWindowOpen(cx,cy)) { /* curtains block partially */ let ww=windows[tile.windowIdx]; if(ww && ww.curtains && !ww.broken) los=false; }
+        if(tile.type==='door' && !tileDoorOpen(cx,cy)) { los=false; break; }
+      }
+      if(los) canSee=true;
+    }
+    if(canSee || canHear){
+      // increase panic for player
+      if(canSee && dist<10) player.panic=Math.min(100, player.panic+8*dt);
+      this.state='chase';
+      this.targetX=canSee?player.x: (game.noisePos?game.noisePos.x:player.x);
+      this.targetY=canSee?player.y: (game.noisePos?game.noisePos.y:player.y);
+      this.seeTimer=1.2;
+    } else {
+      this.seeTimer-=dt;
+      if(this.seeTimer<=0 && this.state==='chase'){ this.state='wander'; this.wanderTimer=0; }
+    }
+    // movement
+    let tx=this.targetX, ty=this.targetY;
+    if(this.state==='wander'){
+      this.wanderTimer-=dt;
+      if(this.wanderTimer<=0){
+        // pick random wander
+        let ang=Math.random()*Math.PI*2, d=rng.range(2,6);
+        let nx=this.x+Math.cos(ang)*d, ny=this.y+Math.sin(ang)*d;
+        nx=Math.max(1,Math.min(WORLD_W-2,nx)); ny=Math.max(1,Math.min(WORLD_H-2,ny));
+        this.targetX=nx; this.targetY=ny; this.wanderTimer=rng.range(2,5);
+      }
+      this.moveTowards(dt, tx,ty, 0.45);
+    } else if(this.state==='chase'){
+      this.moveTowards(dt, tx,ty, this.speed * (game.isNight?0.95:1));
+      // attack if close
+      if(dist<1.1 && this.attackCooldown<=0){
+        this.attackCooldown=1.0+Math.random()*0.6;
+        // try to break barricade/door/window first
+        let ptx=Math.floor(player.x), pty=Math.floor(player.y);
+        let ztx=Math.floor(this.x), zty=Math.floor(this.y);
+        // if player behind door/window, attack barricade
+        let attacked=false;
+        // check adjacent doors/windows around zombie near player
+        for(let yy=-1;yy<=1;yy++) for(let xx=-1;xx<=1;xx++){
+          let cx=ztx+xx, cy=zty+yy;
+          if(cx<0||cy<0||cx>=WORLD_W||cy>=WORLD_H) continue;
+          let td=world[cy][cx];
+          if(td.doorIdx>=0){
+            let d=doors[td.doorIdx];
+            if(d.barricade>0){
+              d.hp-=12; if(d.hp<=0){ d.barricade--; d.hp=60; logMsg('Barricade smashed!'); beep(80,0.12,0.2,'square'); if(d.barricade===0) d.hp=30; }
+              else logMsg('Thud! Zombies bashing barricade...'); 
+              attacked=true; break;
+            } else if(!d.open){
+              d.hp-=8; if(d.hp<=0){ d.open=true; world[cy][cx].solid=false; logMsg('Door broken open!'); } attacked=true; break;
+            }
+          }
+          if(td.windowIdx>=0){
+            let w=windows[td.windowIdx];
+            if(w.barricade>0){
+              w.hp-=10; if(w.hp<=0){ w.barricade--; w.hp=40; logMsg('Window barricade torn!'); if(w.barricade===0) w.broken=true; } attacked=true; break;
+            } else if(!w.broken){
+              w.hp-=10; if(w.hp<=0){ w.broken=true; world[cy][cx].solid=false; logMsg('Window shattered!'); sndAlarm(); game.makeNoise(cx,cy,12,1.2); } attacked=true; break;
+            }
+          }
+        }
+        if(!attacked){
+          // bite/attack player
+          let hitChance=0.5 + (player.panic/200) - (player.skills.blade*0.03);
+          if(player.stamina<20) hitChance+=0.2;
+          if(Math.random()<hitChance){
+            let dmg=8+Math.random()*10;
+            player.damage(dmg,'Bitten by horde');
+            // chance infect/bleed
+            if(Math.random()<0.28){ player.infection=Math.min(100, player.infection+12+Math.random()*12); logMsg('⚠️ BITTEN! Infection risk!'); sndBite(); }
+            if(Math.random()<0.45){ player.bleeding=Math.min(100, player.bleeding+20); logMsg('🩸 BLEEDING! Bandage needed!'); }
+            // panic spike
+            player.panic=Math.min(100, player.panic+18);
+          } else {
+            player.damage(3,'Scratched');
+            logMsg('Zombie swipes you!'); sndHit();
+          }
+        }
+      }
+    }
+    // horde migration random
+    if(rng.chance(0.001)) { this.targetX+=rng.range(-12,12); this.targetY+=rng.range(-12,12); }
+  }
+  moveTowards(dt, tx,ty, speed){
+    let dx=tx-this.x, dy=ty-this.y, d=Math.hypot(dx,dy);
+    if(d<0.3) return;
+    dx/=d; dy/=d;
+    let nx=this.x+dx*speed*dt*2.2, ny=this.y+dy*speed*dt*2.2;
+    // collision: check 4 corners
+    if(!isSolid(nx, this.y)) this.x=nx; else { this.vx=-this.vx; }
+    if(!isSolid(this.x, ny)) this.y=ny; else { this.vy=-this.vy; }
+  }
+}
+
+// ---------- helpers ----------
+function isSolid(x,y){
+  let ix=Math.floor(x), iy=Math.floor(y);
+  if(ix<0||iy<0||ix>=WORLD_W||iy>=WORLD_H) return true;
+  let t=world[iy][ix];
+  if(t.solid) return true;
+  // cars solid
+  if(t.type==='car') return true;
+  // forest already solid
+  return false;
+}
+function tileDoorOpen(x,y){ let d=doors[world[y][x].doorIdx]; return d?d.open:false }
+function tileWindowBroken(x,y){ let w=windows[world[y][x].windowIdx]; return w?w.broken:false }
+function tileWindowOpen(x,y){ let w=windows[world[y][x].windowIdx]; return w?w.open:false }
+
+// ---------- GAME ----------
+class Game{
+  constructor(){
+    this.canvas=document.getElementById('game');
+    this.ctx=this.canvas.getContext('2d');
+    this.mini=document.getElementById('mini').getContext('2d');
+    this.player=null; this.zombies=[]; this.corpses=[];
+    this.time=8*60; this.day=1; // minutes from 0
+    this.paused=true; this.isNight=false;
+    this.camX=0; this.camY=0; this.scale=1;
+    this.noisePos=null; this.noiseTimer=0; this.noiseRadius=0;
+    this.weather='sunny'; this.weatherTimer=0;
+    this.heliTimer= rng.int(3*60,6*60); // in seconds? we'll count minutes
+    this.gunshotTimer= rng.int(2*60,5*60);
+    this.nextHordeTimer= rng.int(60,120);
+    this.exploredCount=0;
+    this.lastMoveSound=0;
+    this.interactCooldown=0;
+    this.dead=false;
+    this.worldSnapshot=null;
+  }
+  newGame(keepWorld){
+    let seedInput=document.getElementById('seedInput').value.trim();
+    let seed= parseInt(seedInput)||Math.floor(Math.random()*999999);
+    if(keepWorld && this.worldSnapshot){
+      // reuse world but new seed? we reuse world
+      world=this.worldSnapshot.world; doors=this.worldSnapshot.doors; windows=this.worldSnapshot.windows; containers=this.worldSnapshot.containers; cars=this.worldSnapshot.cars; trees=this.worldSnapshot.trees; furniture=this.worldSnapshot.furniture;
+      explored=this.worldSnapshot.explored; visible=this.worldSnapshot.visible;
+      seed=this.worldSnapshot.seed;
+      // restore electricity/water states
+      electricityOn=this.worldSnapshot.electricityOn; waterOn=this.worldSnapshot.waterOn; shutoffElecDay=this.worldSnapshot.shutoffElecDay; shutoffWaterDay=this.worldSnapshot.shutoffWaterDay;
+      rng=new RNG(seed+this.day*1000+Math.floor(Math.random()*10000));
+    } else {
+      makeWorld(seed);
+      this.worldSnapshot=null;
+      this.day=1; this.time=9*60;
+      this.corpses=[]; this.heliTimer=rng.int(180,420); this.gunshotTimer=rng.int(120,320); this.nextHordeTimer=rng.int(90,180);
+      // weather
+      this.weather=rng.pick(['sunny','cloudy','rain','fog']); this.weatherTimer=rng.int(200,600);
+    }
+    // spawn player on random floor or grass
+    let spawn = this.findSpawn();
+    this.player=new Player(spawn.x+0.5, spawn.y+0.5);
+    // give starter items
+    this.player.addItem(makeItem('bat')); this.player.addItem(makeItem('bandage')); this.player.addItem(makeItem('water')); this.player.addItem(makeItem('chips')); this.player.addItem(makeItem('flashlight')); this.player.addItem(makeItem('battery'));
+    // spawn zombies
+    this.zombies=[];
+    let zCount=rng.int(70,120);
+    for(let i=0;i<zCount;i++){
+      let p=this.findSpawn(true);
+      // avoid spawning too close to player
+      if(Math.hypot(p.x-spawn.x,p.y-spawn.y)<12) { i--; continue; }
+      this.zombies.push(new Zombie(p.x+0.5,p.y+0.5));
+    }
+    // if previous dead, add that zombie (already in corpses to zombies conversion)
+    if(this.corpses.length>0){
+      for(let c of this.corpses){
+        this.zombies.push(new Zombie(c.x,c.y,true));
+      }
+    }
+    this.paused=false; this.dead=false;
+    document.getElementById('start').style.display='none';
+    document.getElementById('death').style.display='none';
+    logMsg('Spawned at '+spawn.x+','+spawn.y+' Seed:'+seed+' Weather:'+this.weather);
+    this.resize(); this.updateSkillUI(); updateHotbar();
+    if(!this._loopStarted){ this._loopStarted=true; requestAnimationFrame(()=>this.loop()); }
+  }
+  findSpawn(any=false){
+    for(let tries=0;tries<2000;tries++){
+      let x=rng.int(10,WORLD_W-11), y=rng.int(10,WORLD_H-11);
+      let t=world[y][x];
+      if(any){ if(t.type==='floor' || t.type==='grass' || t.type==='parkGrass' || t.type==='sidewalk') return {x,y}; }
+      else { if(t.type==='floor') return {x,y}; }
+    }
+    return {x:100,y:100};
+  }
+  resize(){
+    this.canvas.width=window.innerWidth;
+    this.canvas.height=window.innerHeight;
+    this.scale=1;
+  }
+  respawnSameWorld(){
+    // snapshot world
+    this.worldSnapshot={ world:JSON.parse(JSON.stringify(world)), doors:JSON.parse(JSON.stringify(doors)), windows:JSON.parse(JSON.stringify(windows)), containers:JSON.parse(JSON.stringify(containers)), cars:JSON.parse(JSON.stringify(cars)), trees:JSON.parse(JSON.stringify(trees)), furniture:JSON.parse(JSON.stringify(furniture)), explored, visible, seed:worldSeed, electricityOn, waterOn, shutoffElecDay, shutoffWaterDay };
+    // add previous corpse location as zombie spawn point
+    if(this.player) this.corpses.push({x:this.player.x,y:this.player.y, day:this.day});
+    document.getElementById('death').style.display='none';
+    this.newGame(true);
+    document.getElementById('continueBtn').style.display='block';
+  }
+  die(cause){
+    if(this.dead) return;
+    this.dead=true; this.paused=true;
+    // add to corpses for reincarnation
+    this.corpses.push({x:this.player.x,y:this.player.y, day:this.day});
+    // snapshot for continue
+    this.worldSnapshot={ world:JSON.parse(JSON.stringify(world)), doors:JSON.parse(JSON.stringify(doors)), windows:JSON.parse(JSON.stringify(windows)), containers:JSON.parse(JSON.stringify(containers)), cars:JSON.parse(JSON.stringify(cars)), trees:JSON.parse(JSON.stringify(trees)), furniture:JSON.parse(JSON.stringify(furniture)), explored, visible, seed:worldSeed, electricityOn, waterOn, shutoffElecDay, shutoffWaterDay };
+    // UI
+    document.getElementById('dDays').textContent=this.day+' days';
+    document.getElementById('dHours').textContent=' ('+Math.floor(this.player.timeSurvived/60)+'h '+Math.floor(this.player.timeSurvived%60)+'m)';
+    document.getElementById('dKills').textContent=this.player.kills;
+    document.getElementById('dHunger').textContent=Math.floor(this.player.hunger)+'%';
+    document.getElementById('dThirst').textContent=Math.floor(this.player.thirst)+'%';
+    document.getElementById('dLoot').textContent=this.player.buildingsLooted.size;
+    document.getElementById('deathCause').textContent='Cause: '+cause + (this.player.infection>50?' • Infected':'') + (this.player.bleeding>0?' • Bled out':'');
+    document.getElementById('death').style.display='flex';
+    document.getElementById('continueBtn').style.display='block';
+    beep(120,0.6,0.2,'sawtooth'); beep(80,0.8,0.2,'square');
+  }
+  makeNoise(x,y,radius, duration){
+    this.noisePos={x,y}; this.noiseRadius=radius; this.noiseTimer=duration;
+    // attract zombies
+  }
+  toggleInv(){
+    let el=document.getElementById('inventory');
+    if(el.style.display==='block'){ el.style.display='none'; this.paused=false; }
+    else { el.style.display='block'; this.paused=true; this.refreshInv(); }
+  }
+  sortInv(){ this.player.inv.sort((a,b)=>(a.name||a.id).localeCompare(b.name||b.id)); this.refreshInv(); updateHotbar(); }
+  refreshInv(){
+    let list=document.getElementById('invList');
+    list.innerHTML='';
+    this.player.inv.forEach((it,i)=>{
+      let row=document.createElement('div'); row.className='itemRow'+(i===this.player.equipped?' equip':'');
+      let dur=''; if(it.durLeft!==undefined) dur=` <small style="color:#aaa">${Math.floor(it.durLeft)}/${it.dur}</small>`;
+      let fresh=''; if(it.freshLeft!==undefined){ let f=it.freshLeft; let col = f<0?'#ff4444': f<1?'#ffaa00':'#8f8'; fresh=` <small style="color:${col}"> ${f.toFixed(1)}d</small>`; if(f<0) fresh+=` <b style="color:red">SPOILED!</b>`}
+      row.innerHTML=`<span style="font-size:16px">${it.icon||'📦'}</span><span style="flex:1">${it.name}${dur}${fresh}<br><small style="color:#8a7a65">${it.w}kg ${it.type||''} ${it.dmg?(' DMG:'+it.dmg):''}</small></span>`;
+      row.onclick=()=>{
+        this.player.equipped=i; this.refreshInv(); updateHotbar();
+        logMsg('Equipped '+it.name);
+      };
+      // buttons
+      let btns=document.createElement('div'); btns.style.display='flex'; btns.style.gap='4px';
+      let useBtn=document.createElement('button'); useBtn.className='btnSmall'; useBtn.textContent='Use';
+      useBtn.onclick=(e)=>{ e.stopPropagation(); this.useItem(i); };
+      let dropBtn=document.createElement('button'); dropBtn.className='btnSmall red'; dropBtn.textContent='Drop';
+      dropBtn.onclick=(e)=>{ e.stopPropagation(); let it2=this.player.removeItem(i); if(it2){ let c={x:Math.floor(this.player.x),y:Math.floor(this.player.y),type:'ground',items:[it2]}; c.idx=containers.length; containers.push(c); logMsg('Dropped '+it2.name); this.refreshInv(); }};
+      btns.appendChild(useBtn); btns.appendChild(dropBtn);
+      row.appendChild(btns);
+      list.appendChild(row);
+    });
+    document.getElementById('invWeight').textContent=this.player.weight.toFixed(1)+'/'+this.player.maxWeight+' kg';
+    // nearby
+    let nearby=document.getElementById('nearbyList');
+    nearby.innerHTML='';
+    let cx=Math.floor(this.player.x), cy=Math.floor(this.player.y);
+    let found=[];
+    for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
+      let x=cx+dx,y=cy+dy;
+      if(x<0||y<0||x>=WORLD_W||y>=WORLD_H) continue;
+      let t=world[y][x];
+      if(t.containerIdx>=0){ let c=containers[t.containerIdx]; found.push(c); }
+      // dropped containers also? check containers list for ground at this tile
+      for(let c of containers) if(c.type==='ground' && Math.floor(c.x)===x && Math.floor(c.y)===y) found.push(c);
+    }
+    // also furniture with containers? already covered
+    if(found.length===0) nearby.innerHTML='<small style="color:#666">No containers nearby (move close + E)</small>';
+    else {
+      found.forEach(c=>{
+        let d=document.createElement('div'); d.style.border='1px solid #333'; d.style.padding='4px'; d.style.margin='2px 0'; d.style.background='#0f0d0a';
+        d.innerHTML=`<b>${c.type}</b> (${c.items.length} items) <button class="btnSmall" onclick="game.lootContainer(${c.idx})">Loot all</button> <button class="btnSmall" onclick="game.openContainerUI(${c.idx})">Browse</button>`;
+        nearby.appendChild(d);
+      });
+    }
+    // skills
+    this.updateSkillUI();
+    // interact hints
+    // furniture near
+    let nearFurn = furniture.find(f=>Math.hypot(f.x+0.5-this.player.x,f.y+0.5-this.player.y)<1.6);
+    if(nearFurn) nearby.innerHTML+=`<div style="margin-top:4px;color:#ffd86a">Near: ${nearFurn.type} (E to interact)</div>`;
+    let nearDoor = doors.find(d=>Math.hypot(d.x+0.5-this.player.x,d.y+0.5-this.player.y)<1.5);
+    if(nearDoor) nearby.innerHTML+=`<div style="color:#8af">Door: ${nearDoor.open?'Open':'Closed'} ${nearDoor.locked?'🔒':''} Barricade:${nearDoor.barricade}/${nearDoor.barMax}</div>`;
+    let nearWin = windows.find(w=>Math.hypot(w.x+0.5-this.player.x,w.y+0.5-this.player.y)<1.5);
+    if(nearWin) nearby.innerHTML+=`<div style="color:#8af">Window: ${nearWin.broken?'Broken':nearWin.open?'Open':'Closed'} Barricade:${nearWin.barricade}</div>`;
+  }
+  updateSkillUI(){
+    let el=document.getElementById('skillList');
+    if(!this.player) return;
+    let p=this.player;
+    el.innerHTML=`
+      ♥ HP ${Math.floor(p.hp)} | Stamina ${Math.floor(p.stamina)} | Fatigue ${Math.floor(p.fatigue)}<br>
+      🍖 Hunger ${Math.floor(p.hunger)} | 💧 Thirst ${Math.floor(p.thirst)} | 😱 Panic ${Math.floor(p.panic)}<br>
+      🩸 Bleed ${Math.floor(p.bleeding)} | 🧟 Infection ${Math.floor(p.infection)}%<br>
+      <div style="margin-top:4px;display:grid;grid-template-columns:1fr 1fr;gap:4px">
+        ${Object.entries(p.skills).map(([k,v])=>`<div style="background:#0f0d0a;border:1px solid #333;padding:2px 4px">${k} <b>Lv${v}</b> <small>${p.xp[k].toFixed(0)}/${(v+1)*40}</small></div>`).join('')}
+      </div>
+      <div style="margin-top:4px">Kills: ${p.kills} • Survived: ${(p.timeSurvived/60).toFixed(1)}h</div>
+      <div>Battery: ${Math.floor(p.battery)}% ${p.flashlightOn?'🔦ON':''} • Elec: ${electricityOn?'ON':'OFF (day '+shutoffElecDay+')'} • Water: ${waterOn?'ON':'OFF'}</div>
+    `;
+  }
+  useItem(i){
+    let it=this.player.inv[i]; if(!it) return;
+    if(it.hunger!==undefined || it.thirst!==undefined){
+      // eating/drinking
+      if(it.freshLeft!==undefined && it.freshLeft<0){ logMsg('Spoiled! You puke...'); this.player.hp-=6; this.player.panic+=10; }
+      else{
+        if(it.hunger) this.player.hunger=Math.max(0,this.player.hunger-it.hunger);
+        if(it.thirst) this.player.thirst=Math.max(0,this.player.thirst-it.thirst);
+        if(it.panic) this.player.panic=Math.max(0,this.player.panic+it.panic);
+        this.player.addXp('cooking', 4);
+        logMsg('Consumed '+it.name);
+        beep(400,0.08,0.12,'sine');
+        this.player.removeItem(i);
+        this.refreshInv(); updateHotbar();
+      }
+    } else if(it.id==='bandage' || it.id==='rag'){
+      if(this.player.bleeding>0){ this.player.bleeding=0; logMsg('Bandaged bleeding!'); this.player.addXp('firstAid',8); this.player.removeItem(i); }
+      else if(this.player.hp<100){ this.player.hp=Math.min(100,this.player.hp+12); logMsg('Treated wound'); this.player.removeItem(i); }
+      else logMsg('No need to bandage now');
+      this.refreshInv();
+    } else if(it.id==='disinfect'){
+      if(this.player.infection>0){ this.player.infection=Math.max(0,this.player.infection-18); logMsg('Disinfected! Infection -18'); this.player.removeItem(i); } else logMsg('No infection');
+    } else if(it.id==='flashlight'){
+      this.player.flashlightOn=!this.player.flashlightOn; logMsg('Flashlight '+(this.player.flashlightOn?'ON':'OFF'));
+    } else if(it.type==='blunt' || it.type==='blade'){
+      this.player.equipped=i; logMsg('Equipped '+it.name); this.refreshInv(); updateHotbar();
+    } else logMsg('Can\'t use that directly');
+  }
+  lootContainer(idx){
+    let c=containers[idx]; if(!c) return;
+    if(c.items.length===0){ logMsg('Empty'); return; }
+    let cnt=0;
+    // copy array to avoid concurrent modification
+    let items=[...c.items];
+    for(let it of items){
+      if(this.player.addItem(it)){ c.items.shift(); cnt++; } else break;
+    }
+    // actually remove what we added: simplistic, we shifted; but if weight limit stopped, remaining stays
+    // recount if not all shifted? Already handled.
+    logMsg('Looted '+cnt+' items from '+c.type);
+    this.refreshInv(); updateHotbar();
+  }
+  openContainerUI(idx){
+    let c=containers[idx]; if(!c) return;
+    let w=prompt('Container '+c.type+' contains:\n'+c.items.map((it,i)=>i+': '+it.name).join('\n')+'\nEnter index to take (or all):','all');
+    if(w===null) return;
+    if(w==='all' || w==='') this.lootContainer(idx);
+    else {
+      let i=parseInt(w); if(!isNaN(i)&&c.items[i]){ let it=c.items.splice(i,1)[0]; this.player.addItem(it); logMsg('Took '+it.name); this.refreshInv(); }
+    }
+  }
+  craftBandage(){
+    // need rag
+    let idx=this.player.inv.findIndex(it=>it.id==='rag');
+    if(idx>=0){ this.player.removeItem(idx); this.player.addItem(makeItem('bandage')); logMsg('Crafted rag -> bandage'); this.refreshInv(); this.player.addXp('firstAid',5); }
+    else logMsg('Need a rag!');
+  }
+  tryBarricade(){
+    let px=Math.floor(this.player.x), py=Math.floor(this.player.y);
+    let target=null, isDoor=false;
+    // find nearest door/window within 1.5
+    let bestDist=2, best=null, isD=false;
+    for(let d of doors){ let dist=Math.hypot(d.x+0.5-this.player.x,d.y+0.5-this.player.y); if(dist<bestDist){ best=d; bestDist=dist; isD=true; } }
+    for(let w of windows){ let dist=Math.hypot(w.x+0.5-this.player.x,w.y+0.5-this.player.y); if(dist<bestDist){ best=w; bestDist=dist; isD=false; } }
+    if(!best){ logMsg('No door/window nearby'); return; }
+    // need plank + nails + hammer
+    let hasPlank=this.player.inv.findIndex(it=>it.id==='plank');
+    let hasNails=this.player.inv.findIndex(it=>it.id==='nails');
+    let hasHammer=this.player.inv.findIndex(it=>it.id==='hammer' || it.id==='crowbar');
+    if(hasPlank<0){ logMsg('Need plank!'); return; }
+    if(hasNails<0){ logMsg('Need nails!'); return; }
+    if(hasHammer<0){ logMsg('Need hammer/crowbar!'); return; }
+    if(best.barricade>=best.barMax){ logMsg('Already max barricaded'); return; }
+    this.player.removeItem(hasPlank);
+    // nails not consumed fully? consume one box per 2 barricades
+    if(best.barricade%2===1) this.player.removeItem(hasNails);
+    best.barricade++; best.hp+=30;
+    logMsg('Barricaded! '+best.barricade+'/'+best.barMax);
+    this.player.addXp('carpentry',12);
+    this.refreshInv();
+  }
+  trySleep(){
+    let nearBed=furniture.find(f=>f.type==='bed' && Math.hypot(f.x+0.5-this.player.x,f.y+0.5-this.player.y)<1.8);
+    if(!nearBed){ logMsg('Need to be near a bed!'); return; }
+    if(this.player.panic>60 && Math.random()<0.3){ logMsg('Too panicked to sleep!'); return; }
+    logMsg('Sleeping 6 hours... (risky)');
+    this.paused=true;
+    setTimeout(()=>{
+      this.time+=6*60; // 6 hours
+      if(this.time>=24*60){ this.time-=24*60; this.day++; }
+      this.player.fatigue=Math.max(0,this.player.fatigue-55);
+      this.player.hunger+=12; this.player.thirst+=18;
+      this.player.panic=Math.max(0,this.player.panic-15);
+      // risk: spawn zombie nearby 35% chance
+      if(Math.random()<0.35){
+        let ang=Math.random()*Math.PI*2, d=6+Math.random()*4;
+        let zx=this.player.x+Math.cos(ang)*d, zy=this.player.y+Math.sin(ang)*d;
+        this.zombies.push(new Zombie(zx,zy));
+        logMsg('You wake to scratching! Zombies came!');
+        beep(100,0.4,0.2,'square');
+      } else logMsg('You slept. Fatigue down.');
+      this.paused=false;
+      this.refreshInv();
+    }, 900);
+  }
+  cookFood(){
+    let nearStove=furniture.find(f=>f.type==='stove' && Math.hypot(f.x+0.5-this.player.x,f.y+0.5-this.player.y)<1.8);
+    if(!nearStove){ logMsg('Need stove!'); return; }
+    if(!electricityOn){ logMsg('No electricity! Need campfire (not built). But you can try - cold cooking?'); } // allow anyway 50%
+    let idx=this.player.inv.findIndex(it=>it.id==='meat_raw');
+    if(idx<0){ logMsg('Need raw meat!'); return; }
+    let it=this.player.inv[idx];
+    if(it.freshLeft<0){ logMsg('Meat spoiled, can\'t cook'); return; }
+    this.player.removeItem(idx);
+    this.player.addItem(makeItem('meat_cooked'));
+    logMsg('Cooked meat on stove!');
+    this.player.addXp('cooking',10);
+    this.refreshInv();
+  }
+  collectWater(){
+    // need bottle, water source
+    let nearTap = false;
+    // check if inside house (buildingId) and waterOn, or rain collector
+    let cx=Math.floor(this.player.x), cy=Math.floor(this.player.y);
+    let t=world[cy]?.[cx];
+    if(t && t.buildingId>=0 && waterOn) nearTap=true;
+    let nearCollector=furniture.find(f=>f.type==='rainCollector' && Math.hypot(f.x+0.5-this.player.x,f.y+0.5-this.player.y)<1.8);
+    if(nearCollector && nearCollector.water>0) nearTap=true;
+    if(!nearTap && !waterOn){ logMsg('No water! Taps shut off. Find rain collector when raining.'); return; }
+    // need empty? we simplify: just add water bottle if have empty? We give new bottle
+    if(this.player.weight+0.9>this.player.maxWeight){ logMsg('Too heavy'); return; }
+    this.player.addItem(makeItem('water'));
+    if(nearCollector) nearCollector.water=Math.max(0,nearCollector.water-1);
+    logMsg('Collected water');
+    this.refreshInv();
+  }
+  // input
+  tryInteract(){
+    if(this.interactCooldown>0) return;
+    this.interactCooldown=0.3;
+    let px=this.player.x, py=this.player.y;
+    // find nearest door
+    let best=null, bestDist=1.6, isDoor=true;
+    for(let d of doors){ let dist=Math.hypot(d.x+0.5-px,d.y+0.5-py); if(dist<bestDist){ best=d; bestDist=dist; isDoor=true; } }
+    for(let w of windows){ let dist=Math.hypot(w.x+0.5-px,w.y+0.5-py); if(dist<bestDist){ best=w; bestDist=dist; isDoor=false; } }
+    if(best){
+      if(isDoor){
+        if(best.locked){ // need crowbar chance
+          let hasCrow=this.player.inv.find(it=>it.id==='crowbar');
+          if(hasCrow){ if(Math.random()<0.6){ best.locked=false; logMsg('Pried lock with crowbar!'); beep(300,0.08,0.12,'square'); } else { logMsg('Lock resists... try again'); this.makeNoise(best.x,best.y,10,0.8); } }
+          else { logMsg('Door locked! Need crowbar / find key.'); this.makeNoise(best.x,best.y,6,0.6); }
+          return;
+        }
+        best.open=!best.open;
+        world[best.y][best.x].solid = !best.open && best.barricade===0 ? false : !best.open; // doors not solid when open? Actually closed doors block vision but passable? We make closed doors solid for zombies? Simplify: closed door solid
+        // proper: open = passable, closed = solid
+        world[best.y][best.x].solid = !best.open;
+        logMsg(best.open?'Opened door':'Closed door');
+        beep(250,0.06,0.08,'sine');
+        // alarm chance
+        if(!best.open && Math.random()<0.08){ logMsg('🚨 HOUSE ALARM!'); sndAlarm(); this.makeNoise(best.x,best.y,28,6); }
+      } else {
+        // window
+        if(best.broken){ logMsg('Window already broken'); // climb through
+          best.open=true; world[best.y][best.x].solid=false;
+        } else {
+          // try open window
+          if(Math.random()<0.5){ best.open=!best.open; world[best.y][best.x].solid = !best.open && !best.broken; logMsg(best.open?'Opened window':'Closed window'); }
+          else { // breaking
+            best.broken=true; world[best.y][best.x].solid=false; logMsg('Smashed window! (noise)'); beep(500,0.12,0.15,'square'); this.makeNoise(best.x,best.y,14,2);
+            if(Math.random()<0.12){ logMsg('🚨 WINDOW ALARM!'); this.makeNoise(best.x,best.y,30,7); for(let i=0;i<3;i++) sndAlarm(); }
+            this.player.addXp('sneaking',2);
+          }
+        }
+      }
+      return;
+    }
+    // containers
+    let cx=Math.floor(px), cy=Math.floor(py);
+    let nearbyContainers=[];
+    for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
+      let x=cx+dx,y=cy+dy;
+      if(x<0||y<0||x>=WORLD_W||y>=WORLD_H) continue;
+      let t=world[y][x];
+      if(t.containerIdx>=0) nearbyContainers.push(containers[t.containerIdx]);
+    }
+    if(nearbyContainers.length>0){
+      // auto loot first
+      this.lootContainer(nearbyContainers[0].idx);
+      return;
+    }
+    // furniture: bed -> sleep prompt
+    let nearFurn=furniture.find(f=>Math.hypot(f.x+0.5-px,f.y+0.5-py)<1.6);
+    if(nearFurn){
+      if(nearFurn.type==='bed'){ this.trySleep(); }
+      else if(nearFurn.type==='stove'){ this.cookFood(); }
+      else if(nearFurn.type==='rainCollector'){ logMsg('Rain collector water: '+nearFurn.water.toFixed(1)); }
+      else { logMsg('You inspect the '+nearFurn.type); }
+      return;
+    }
+    // cars
+    let car=cars.find(c=>Math.hypot(c.x+0.5-px,c.y+0.5-py)<1.4);
+    if(car){ logMsg('Car locked, try looting (E again)'); this.lootContainer(world[Math.floor(car.y)][Math.floor(car.x)].containerIdx); return; }
+    logMsg('Nothing to interact');
+  }
+
+  // main loop
+  loop(){
+    if(!this._last) this._last=performance.now();
+    let now=performance.now(); let dt=Math.min(0.05,(now-this._last)/1000); this._last=now;
+    if(!this.paused) this.update(dt);
+    this.render();
+    requestAnimationFrame(()=>this.loop());
+  }
+  update(dt){
+    // time
+    this.time+=dt* 8; // 8x speed: 1 real sec = 8 game minutes
+    if(this.time>=24*60){ this.time-=24*60; this.day++; logMsg('Day '+this.day+' - The world gets worse...');
+      // electricity/water shutoff checks
+      if(this.day>=shutoffElecDay && electricityOn){ electricityOn=false; logMsg('⚡ ELECTRICITY SHUT OFF! (Day '+this.day+')'); beep(60,0.8,0.15,'square'); }
+      if(this.day>=shutoffWaterDay && waterOn){ waterOn=false; logMsg('🚰 WATER SHUT OFF! Find rain collectors!'); }
+    }
+    let hour=this.time/60;
+    this.isNight = (hour<6 || hour>20.5);
+    // weather timer
+    this.weatherTimer-=dt;
+    if(this.weatherTimer<=0){ this.weather=rng.pick(['sunny','cloudy','rain','fog']); this.weatherTimer=rng.int(180,500); logMsg('Weather: '+this.weather); }
+    // fill rain collectors when raining
+    if(this.weather==='rain'){
+      for(let f of furniture) if(f.type==='rainCollector'){ f.water=Math.min(10, f.water+dt*0.02); }
+    }
+    // player update
+    if(this.player){
+      // input movement
+      let mx=0,my=0;
+      if(keys['w']||keys['arrowup']) my-=1;
+      if(keys['s']||keys['arrowdown']) my+=1;
+      if(keys['a']||keys['arrowleft']) mx-=1;
+      if(keys['d']||keys['arrowright']) mx+=1;
+      if(mx!==0 && my!==0){ mx*=0.707; my*=0.707; }
+      let speed=1.8;
+      this.player.running=!!keys['shift'];
+      this.player.sneaking=!!keys[' '] || keys['space'];
+      if(this.player.sneaking) speed=0.9;
+      if(this.player.running){ speed=3.2; if(this.player.stamina<=0) speed=1.5; }
+      // panic slows, fatigue slows
+      if(this.player.panic>70) speed*=0.85;
+      if(this.player.fatigue>80) speed*=0.75;
+      if(this.player.stamina<15) speed*=0.8;
+      // apply
+      this.player.vx=mx*speed; this.player.vy=my*speed;
+      let nx=this.player.x+this.player.vx*dt, ny=this.player.y+this.player.vy*dt;
+      // collision X
+      if(!isSolid(nx,this.player.y)) this.player.x=nx; else { // slide?
+        if(!isSolid(nx,this.player.y+0.2)) this.player.x=nx;
+      }
+      if(!isSolid(this.player.x,ny)) this.player.y=ny;
+      // clamp
+      this.player.x=Math.max(1,Math.min(WORLD_W-1.1,this.player.x));
+      this.player.y=Math.max(1,Math.min(WORLD_H-1.1,this.player.y));
+      // footstep sound & noise
+      if((mx||my) && now-lastStep> (this.player.running?220: this.player.sneaking?500:360)){
+        lastStep=now;
+        if(this.player.running) this.makeNoise(this.player.x,this.player.y,9,0.6);
+        else if(!this.player.sneaking) this.makeNoise(this.player.x,this.player.y,4,0.3);
+      }
+      this.player.update(dt);
+    }
+    // zombies update
+    for(let z of this.zombies) z.update(dt,this.player);
+    // remove dead zombies -> corpses (already)
+    this.zombies = this.zombies.filter(z=>z.hp>0);
+    // noise decay
+    if(this.noiseTimer>0){ this.noiseTimer-=dt; if(this.noiseTimer<=0) this.noisePos=null; }
+    if(this.interactCooldown>0) this.interactCooldown-=dt;
+    // random events
+    this.heliTimer-=dt;
+    if(this.heliTimer<=0){
+      this.heliTimer=rng.int(220,480);
+      logMsg('🚁 HELICOPTER overhead! Horde follows its noise!');
+      sndHeli();
+      this.makeNoise(this.player.x+rng.range(-20,20), this.player.y+rng.range(-20,20), 36, 8);
+      // spawn horde
+      for(let i=0;i<8;i++){ let ang=Math.random()*Math.PI*2, d=14+rng.range(0,10); this.zombies.push(new Zombie(this.player.x+Math.cos(ang)*d, this.player.y+Math.sin(ang)*d)); }
+    }
+    this.gunshotTimer-=dt;
+    if(this.gunshotTimer<=0){
+      this.gunshotTimer=rng.int(140,380);
+      let gx=this.player.x+rng.range(-30,30), gy=this.player.y+rng.range(-30,30);
+      logMsg('🔫 Distant gunshot! Zombies migrate...');
+      beep(150,0.15,0.18,'square'); beep(80,0.2,0.12,'square');
+      this.makeNoise(gx,gy,22,4);
+    }
+    this.nextHordeTimer-=dt;
+    if(this.nextHordeTimer<=0){
+      this.nextHordeTimer=rng.int(70,140);
+      if(rng.chance(0.6)){
+        let ang=Math.random()*Math.PI*2, d=18;
+        for(let i=0;i<5;i++) this.zombies.push(new Zombie(this.player.x+Math.cos(ang)*d+rng.range(-3,3), this.player.y+Math.sin(ang)*d+rng.range(-3,3)));
+        logMsg('Horde migrating...');
+      }
+    }
+    // food spoilage
+    for(let it of this.player.inv){
+      if(it.freshLeft!==undefined){
+        it.freshLeft-=dt/ (24*60) * 8; // spoils over days (our fast time)
+        if(it.freshLeft<0 && !it.spoiled){ it.spoiled=true; it.name+=' (spoiled)'; }
+      }
+    }
+    // check containers spoilage? leave.
+
+    // camera
+    this.camX=this.player.x*TILE - this.canvas.width/2;
+    this.camY=this.player.y*TILE - this.canvas.height/2;
+    // fog update
+    this.updateFog();
+
+    // win death by time? no
+    // update UI
+    this.updateHUD();
+  }
+  updateFog(){
+    let px=Math.floor(this.player.x), py=Math.floor(this.player.y);
+    let vr = this.isNight ? (this.player.flashlightOn?9:5) : 10;
+    if(this.player.sneaking) vr+=1;
+    if(this.weather==='fog') vr=Math.max(3,vr-2);
+    // reset visible
+    for(let y=0;y<WORLD_H;y++) for(let x=0;x<WORLD_W;x++) visible[y][x]=false;
+    // simple radial with occlusion
+    for(let dy=-vr;dy<=vr;dy++) for(let dx=-vr;dx<=vr;dx++){
+      let x=px+dx,y=py+dy;
+      if(x<0||y<0||x>=WORLD_W||y>=WORLD_H) continue;
+      if(dx*dx+dy*dy>vr*vr) continue;
+      // ray cast from player to x,y
+      let blocked=false;
+      let steps=Math.max(Math.abs(dx),Math.abs(dy));
+      for(let s=1;s<steps;s++){
+        let t=s/steps, cx=Math.floor(px+dx*t), cy=Math.floor(py+dy*t);
+        if(cx<0||cy<0||cx>=WORLD_W||cy>=WORLD_H) continue;
+        let tile=world[cy][cx];
+        if(tile.type==='wall' || tile.type==='fence'){ blocked=true; break; }
+        if(tile.type==='forest'){ // forest blocks beyond 2 tiles? but allow 1
+          if(s<steps-1) { blocked=true; break; }
+        }
+        if(tile.type==='window'){
+          let w=windows[tile.windowIdx];
+          if(w && !w.broken && w.curtains) { blocked=true; break; }
+        }
+      }
+      if(!blocked){
+        visible[y][x]=true;
+        explored[y][x]=true;
+      }
+    }
+    // also always reveal immediate 1 tile around player
+    for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
+      let x=px+dx,y=py+dy;
+      if(x>=0&&y>=0&&x<WORLD_W&&y<WORLD_H){ visible[y][x]=true; explored[y][x]=true; }
+    }
+  }
+  updateHUD(){
+    document.getElementById('hpText').textContent=Math.floor(this.player.hp);
+    document.getElementById('healthFill').style.width=Math.max(0,this.player.hp)+'%';
+    document.getElementById('staminaFill').style.width=Math.max(0,this.player.stamina)+'%';
+    // clock
+    let h=Math.floor(this.time/60)%24, m=Math.floor(this.time%60);
+    let ampm=h>=12?'PM':'AM', dh=h%12||12;
+    document.getElementById('clockTime').textContent=(dh+'').padStart(2,'0')+':'+(m+'').padStart(2,'0')+' '+ampm + (this.isNight?' 🌙':' ☀️');
+    document.getElementById('clockDate').textContent='Day '+this.day+' • JUL 9 • '+this.weather.toUpperCase() + ' • Z:'+this.zombies.length;
+    // weather icon
+    let wi='☀️'; if(this.weather==='rain') wi='🌧️'; else if(this.weather==='cloudy') wi='☁️'; else if(this.weather==='fog') wi='🌫️';
+    document.getElementById('weatherIcon').textContent=wi;
+    // moodles
+    let moods=[];
+    const add=(icon,tip,state)=>moods.push({icon,tip,state});
+    if(this.player.hunger>30) add(this.player.hunger>70?'🍖':'🍗', 'Hungry '+Math.floor(this.player.hunger)+'%', this.player.hunger>60?'bad':'warn');
+    else if(this.player.hunger<5) add('🥗','Well Fed','good');
+    if(this.player.thirst>30) add(this.player.thirst>70?'💧':'🥤','Thirsty '+Math.floor(this.player.thirst)+'%',this.player.thirst>60?'bad':'warn');
+    if(this.player.fatigue>30) add(this.player.fatigue>75?'😴':'🥱','Tired '+Math.floor(this.player.fatigue)+'%',this.player.fatigue>70?'bad':'warn');
+    if(this.player.panic>20) add('😱','Panic '+Math.floor(this.player.panic)+'%',this.player.panic>60?'bad':'warn');
+    if(this.player.bleeding>0) add('🩸','Bleeding!','bad');
+    if(this.player.infection>0) add('🤢','Infected '+Math.floor(this.player.infection)+'%',this.player.infection>40?'bad':'warn');
+    if(this.player.hp<60) add('❤️','Injured '+Math.floor(this.player.hp)+'%',this.player.hp<30?'bad':'warn'); else add('💚','Healthy','good');
+    if(this.player.stamina<25) add('🏃','Exhausted','bad');
+    if(electricityOn===false) add('⚡','Power Off','warn');
+    if(waterOn===false) add('🚰','Water Off','warn');
+    if(this.player.sneaking) add('🤫','Sneaking - low noise','good');
+    if(this.player.flashlightOn) add('🔦','Light ON','warn');
+
+    let cont=document.getElementById('moodles'); cont.innerHTML='';
+    moods.forEach(mm=>{
+      let d=document.createElement('div'); d.className='moodle '+(mm.state||'');
+      d.innerHTML=mm.icon+'<span class="tip">'+mm.tip+'</span>';
+      cont.appendChild(d);
+    });
+    // minimap
+    this.drawMinimap();
+  }
+  drawMinimap(){
+    let c=this.mini;
+    c.fillStyle='#0a0a0a'; c.fillRect(0,0,80,80);
+    let scale=80/ (36);
+    let cx=Math.floor(this.player.x), cy=Math.floor(this.player.y);
+    for(let dy=-18;dy<18;dy++) for(let dx=-18;dx<18;dx++){
+      let x=cx+dx,y=cy+dy;
+      if(x<0||y<0||x>=WORLD_W||y>=WORLD_H) continue;
+      if(!explored[y][x]) continue;
+      let t=world[y][x];
+      let col='#1a1a1a';
+      if(t.type==='road') col='#555';
+      else if(t.type==='sidewalk') col='#7a7a7a';
+      else if(t.type==='floor') col='#c2b090';
+      else if(t.type==='wall') col='#5a4a3a';
+      else if(t.type==='forest') col='#1a3a1a';
+      else if(t.type==='grass') col='#2e4d1e';
+      else if(t.type==='parkGrass') col='#3a6a2a';
+      c.fillStyle=col; c.fillRect(40+dx*2,40+dy*2,2,2);
+    }
+    // player
+    c.fillStyle='#3a9aff'; c.fillRect(39,39,3,3);
+    // zombies near
+    c.fillStyle='#ff3b3b';
+    for(let z of this.zombies){
+      let dx=Math.floor(z.x-cx), dy=Math.floor(z.y-cy);
+      if(Math.abs(dx)<18&&Math.abs(dy)<18) c.fillRect(40+dx*2,40+dy*2,2,2);
+    }
+  }
+
+  // combat
+  doAttack(){
+    if(this.player.attackCooldown>0) return;
+    this.player.attackCooldown=0.45;
+    this.player.swingProgress=1;
+    let it=this.player.equippedItem;
+    let dmg=5, range=1.0, type='blunt';
+    if(it && it.dmg){ dmg=it.dmg; range=it.range||1.3; type=it.type; if(it.durLeft!==undefined){ it.durLeft-=1; if(it.durLeft<=0){ logMsg(it.name+' broke!'); let idx=this.player.inv.indexOf(it); this.player.removeItem(idx); beep(80,0.2,0.15,'square'); } } }
+    // stamina drain
+    this.player.stamina=Math.max(0,this.player.stamina-9);
+    sndSwing();
+    this.makeNoise(this.player.x,this.player.y,7,0.5);
+    if(type==='blunt') this.player.addXp('blunt',2);
+    if(type==='blade') this.player.addXp('blade',2);
+
+    // find zombies in arc
+    let hit=false;
+    // mouse angle
+    let mx=mouse.x, my=mouse.y;
+    // convert mouse to world angle: mouse is screen center approx? Actually we compute angle from player to mouse world pos
+    let worldMouseX=(this.camX+mx)/TILE, worldMouseY=(this.camY+my)/TILE;
+    let ang=Math.atan2(worldMouseY-this.player.y, worldMouseX-this.player.x);
+    for(let z of this.zombies){
+      let dx=z.x-this.player.x, dy=z.y-this.player.y, dist=Math.hypot(dx,dy);
+      if(dist>range+0.6) continue;
+      let a=Math.atan2(dy,dx), diff=Math.abs(Math.atan2(Math.sin(a-ang),Math.cos(a-ang)));
+      if(diff>1.2) continue; // 70deg cone
+      // hit
+      let actualDmg=dmg + (this.player.skills[type]||0)*2 + (this.player.panic>50?-3:0);
+      if(this.player.stamina<20) actualDmg*=0.6;
+      z.hp-=actualDmg; z.hitFlash=0.2;
+      hit=true; sndHit();
+      // knockback
+      z.x+=Math.cos(ang)*0.35; z.y+=Math.sin(ang)*0.35;
+      if(z.hp<=0){
+        this.player.kills++; this.player.addXp(type,6);
+        logMsg('Killed zombie! ('+this.player.kills+')');
+        // corpse
+        this.corpses.push({x:z.x,y:z.y,day:this.day});
+        beep(300,0.12,0.12,'sine');
+      }
+      break; // hit one per swing
+    }
+    if(!hit) logMsg('Swing & miss');
+  }
+
+  // render
+  render(){
+    let ctx=this.ctx;
+    let W=this.canvas.width, H=this.canvas.height;
+    ctx.imageSmoothingEnabled=false;
+    // clear
+    ctx.fillStyle='#0d0a08'; ctx.fillRect(0,0,W,H);
+    if(!world || !this.player) return;
+    ctx.save();
+    // translate camera
+    ctx.translate(-this.camX, -this.camY);
+
+    // compute visible tile bounds
+    let x0=Math.floor(this.camX/TILE)-1, x1=Math.ceil((this.camX+W)/TILE)+1;
+    let y0=Math.floor(this.camY/TILE)-1, y1=Math.ceil((this.camY+H)/TILE)+1;
+    x0=Math.max(0,x0); y0=Math.max(0,y0); x1=Math.min(WORLD_W-1,x1); y1=Math.min(WORLD_H-1,y1);
+
+    // draw ground
+    for(let y=y0;y<=y1;y++){
+      for(let x=x0;x<=x1;x++){
+        let t=world[y][x];
+        if(!explored[y][x]) continue;
+        // fog hidden but explored -> dark
+        let isVisible=visible[y][x];
+        let px=x*TILE, py=y*TILE;
+        // base color
+        let col;
+        switch(t.type){
+          case 'grass': col=isVisible?COLORS.grass:'#1a2a12'; break;
+          case 'parkGrass': col=isVisible?COLORS.grass2:'#1a2a14'; break;
+          case 'forest': col=isVisible?COLORS.tree:'#0f1f0f'; break;
+          case 'dirt': col=COLORS.dirt; break;
+          case 'road': col=isVisible?COLORS.road:'#1a1a1a'; break;
+          case 'sidewalk': col=isVisible?COLORS.sidewalk:'#333'; break;
+          case 'floor': col=isVisible?COLORS.floor:'#3a352a'; break;
+          case 'wall': col=isVisible?COLORS.wall:'#2a2015'; break;
+          case 'door': col=isVisible?COLORS.wood:'#2a1a0a'; break;
+          case 'window': col=isVisible?'#6a8aaa':'#222'; break;
+          case 'fence': col='#4a3a2a'; break;
+          case 'car': col='#3a3a4a'; break;
+          default: col='#222';
+        }
+        ctx.fillStyle=col; ctx.fillRect(px,py,TILE,TILE);
+        // tile details via fillRect pixel art
+        if(isVisible){
+          if(t.type==='grass'){
+            ctx.fillStyle='#0001'; if((x+y)%3===0) ctx.fillRect(px+4,py+6,2,2);
+            if(rngChance(x*999+y*31,0.08)) { ctx.fillStyle='#2a5a1a'; ctx.fillRect(px+10,py+12,6,2); }
+          } else if(t.type==='road'){
+            if(x%2===0 && y%10===0){ ctx.fillStyle=COLORS.roadLine; ctx.fillRect(px+10,py+14,12,4); }
+            // road edge cracks
+            ctx.fillStyle='#0002'; if((x+y)%7===0) ctx.fillRect(px,py, TILE,1);
+          } else if(t.type==='sidewalk'){
+            ctx.strokeStyle='#0003'; ctx.strokeRect(px,py,TILE,TILE);
+            ctx.fillStyle='#0001'; ctx.fillRect(px+TILE/2,py,1,TILE);
+          } else if(t.type==='floor'){
+            ctx.fillStyle=COLORS.floor2; if((x+y)%2===0) ctx.fillRect(px,py,TILE,1);
+            ctx.fillStyle='#0002'; ctx.fillRect(px,py,1,TILE);
+            // wood planks for some floors
+            if(t.buildingId%2===0){ ctx.fillStyle='#a88a5a'; if(y%4===0) ctx.fillRect(px,py+TILE-1,TILE,1); }
+          } else if(t.type==='wall'){
+            // brick pattern
+            ctx.fillStyle=COLORS.wallTop; ctx.fillRect(px,py,TILE,6);
+            ctx.fillStyle=COLORS.wallDark; ctx.fillRect(px,py+TILE-6,TILE,6);
+            ctx.fillStyle='#0004'; ctx.fillRect(px,py,2,TILE);
+            // mortar lines
+            ctx.fillStyle='#0002'; ctx.fillRect(px,py+8,TILE,1); ctx.fillRect(px+8,py,1,TILE/2);
+          } else if(t.type==='forest'){
+            // leafy canopy
+            ctx.fillStyle=COLORS.tree2; ctx.fillRect(px+6,py+4,20,20);
+            ctx.fillStyle=COLORS.tree; ctx.fillRect(px+10,py+10,12,12);
+            // trunk
+            ctx.fillStyle=COLORS.treeTrunk; ctx.fillRect(px+14,py+14,4,18);
+          } else if(t.type==='car'){
+            ctx.fillStyle='#222'; ctx.fillRect(px+2,py+6,TILE-4,20);
+            ctx.fillStyle='#4a6a8a'; ctx.fillRect(px+6,py+8,18,12);
+            ctx.fillStyle='#111'; ctx.fillRect(px+4,py+22,6,6); ctx.fillRect(px+22,py+22,6,6);
+          } else if(t.type==='fence'){
+            ctx.fillStyle='#5a3a1a'; ctx.fillRect(px+12,py,8,TILE);
+            ctx.fillStyle='#0004'; ctx.fillRect(px+12,py,2,TILE);
+            ctx.fillStyle='#7a4a2a'; for(let i=0;i<TILE;i+=6) ctx.fillRect(px+10,py+i,12,2);
+          }
+        } else {
+          // explored but not visible -> darken
+          ctx.fillStyle='#0006'; ctx.fillRect(px,py,TILE,TILE);
+        }
+        // container markers visible
+        if(isVisible && t.containerIdx>=0){
+          let c=containers[t.containerIdx];
+          if(c.type==='bin'){ ctx.fillStyle='#3a3a2a'; ctx.fillRect(px+8,py+8,16,12); ctx.fillStyle='#5a5a3a'; ctx.fillRect(px+10,py+4,12,4); }
+          else if(c.type==='car'){ /* already car*/ }
+          else if(c.type==='fridge'){ ctx.fillStyle='#d0d0d0'; ctx.fillRect(px+6,py+4,20,24); ctx.fillStyle='#000'; ctx.fillRect(px+14,py+8,2,8); }
+        }
+      }
+    }
+    // furniture
+    for(let f of furniture){
+      if(f.x<x0-1||f.x>x1+1||f.y<y0-1||f.y>y1+1) continue;
+      if(!visible[f.y][f.x] && !explored[f.y][f.x]) continue;
+      let px=f.x*TILE, py=f.y*TILE;
+      if(f.type==='bed'){ ctx.fillStyle='#8a6a5a'; ctx.fillRect(px+2,py+4,28,20); ctx.fillStyle='#c9a080'; ctx.fillRect(px+4,py+6,24,12); ctx.fillStyle='#d0d0d0'; ctx.fillRect(px+4,py+6,10,12); }
+      else if(f.type==='stove'){ ctx.fillStyle='#2a2a2a'; ctx.fillRect(px+4,py+4,24,24); ctx.fillStyle='#8a1a1a'; ctx.fillRect(px+8,py+8,16,8); ctx.fillStyle='#444'; ctx.fillRect(px+8,py+18,16,4); }
+      else if(f.type==='fridge'){ /* already via container, but extra */ }
+      else if(f.type==='bench'){ ctx.fillStyle='#6a4a1a'; ctx.fillRect(px+2,py+10,28,8); ctx.fillStyle='#3a2a0a'; ctx.fillRect(px+4,py+18,4,8); ctx.fillRect(px+24,py+18,4,8); }
+      else if(f.type==='rainCollector'){ ctx.fillStyle='#4a4a5a'; ctx.fillRect(px+6,py+6,20,20); ctx.fillStyle='#2a4a6a'; ctx.fillRect(px+8,py+12,16,Math.min(12, f.water*1.2)); ctx.fillStyle='#aaa'; ctx.fillRect(px+10,py+4,12,2); }
+      else if(f.type==='table'){ ctx.fillStyle='#6e4a20'; ctx.fillRect(px+4,py+6,24,18); ctx.fillStyle='#4a3010'; ctx.fillRect(px+6,py+24,4,6); ctx.fillRect(px+22,py+24,4,6); }
+      else if(f.type==='shelf'){ ctx.fillStyle='#5a3a1a'; ctx.fillRect(px+6,py+4,20,24); ctx.fillStyle='#8a5a2a'; ctx.fillRect(px+8,py+10,16,2); ctx.fillRect(px+8,py+18,16,2); }
+      else if(f.type==='kitchen'){ ctx.fillStyle='#8a8a7a'; ctx.fillRect(px+4,py+4,24,20); ctx.fillStyle='#444'; ctx.fillRect(px+8,py+10,16,4); }
+    }
+
+    // doors/windows barricades overlay (still in tile loop but we do second pass for clarity)
+    for(let y=y0;y<=y1;y++) for(let x=x0;x<=x1;x++){
+      let t=world[y][x];
+      if(t.doorIdx>=0){
+        let d=doors[t.doorIdx]; let px=x*TILE, py=y*TILE;
+        if(d.open){ ctx.fillStyle='#0a0a0a'; ctx.fillRect(px+10,py+10,12,12); ctx.fillStyle=COLORS.wood2; ctx.fillRect(px+20,py,4,TILE); }
+        else{
+          ctx.fillStyle=d.locked? '#5a1a1a':COLORS.wood; ctx.fillRect(px+2,py+2,TILE-4,TILE-4); ctx.fillStyle='#000'; ctx.fillRect(px+18,py+10,4,4);
+          if(d.barricade>0){ ctx.fillStyle='#6a4a1a'; for(let b=0;b<d.barricade;b++) ctx.fillRect(px+2,py+4+b*7,TILE-4,5); ctx.fillStyle='#111'; for(let b=0;b<d.barricade;b++) ctx.fillRect(px+4,py+4+b*7, TILE-8,2); }
+          // hp bar
+          if(d.hp<100){ ctx.fillStyle='#000'; ctx.fillRect(px,py-4,TILE,4); ctx.fillStyle='#ff3b3b'; ctx.fillRect(px,py-4,TILE*d.hp/100,4); }
+        }
+      }
+      if(t.windowIdx>=0){
+        let w=windows[t.windowIdx]; let px=x*TILE, py=y*TILE;
+        if(w.broken){ ctx.fillStyle='#1a1a1a'; ctx.fillRect(px+4,py+4,TILE-8,TILE-8); // shards
+          ctx.fillStyle='#8aaf'; ctx.fillRect(px+6,py+6,6,6); }
+        else{
+          ctx.fillStyle='#aaccff'; ctx.fillRect(px+4,py+4,TILE-8,TILE-8); ctx.fillStyle='#6a8aaa'; ctx.fillRect(px+12,py+4,2,TILE-8); ctx.fillRect(px+4,py+12,TILE-8,2);
+          if(w.curtains){ ctx.fillStyle='#c9a86a'; ctx.fillRect(px+6,py+6,TILE-12,TILE-12); }
+          if(w.barricade>0){ ctx.fillStyle='#6a4a1a'; for(let b=0;b<w.barricade;b++) ctx.fillRect(px+2,py+6+b*9,TILE-4,5); }
+        }
+        if(w.hp<40 && !w.broken){ ctx.fillStyle='#000'; ctx.fillRect(px,py-4,TILE,3); ctx.fillStyle='#ffaa00'; ctx.fillRect(px,py-4,TILE*w.hp/40,3); }
+      }
+    }
+
+    // corpses
+    for(let c of this.corpses){
+      if(c.x*TILE < this.camX-20 || c.x*TILE > this.camX+W+20) continue;
+      let px=c.x*TILE, py=c.y*TILE;
+      ctx.fillStyle='#3a1a1a'; ctx.fillRect(px+8,py+12,16,8); ctx.fillStyle='#4a2a2a'; ctx.fillRect(px+10,py+10,12,6);
+      // X eyes
+      ctx.fillStyle='#000'; ctx.fillRect(px+12,py+8,3,1); ctx.fillRect(px+17,py+8,3,1);
+    }
+
+    // zombies
+    for(let z of this.zombies){
+      let px=z.x*TILE, py=z.y*TILE;
+      if(px < this.camX-30 || px > this.camX+W+30 || py < this.camY-30 || py > this.camY+H+30) continue;
+      if(!visible[Math.floor(z.y)][Math.floor(z.x)] && !explored[Math.floor(z.y)][Math.floor(z.x)]) continue; // fog hide distant
+      // shadow
+      ctx.fillStyle='#0003'; ctx.fillRect(px+6,py+22,20,6);
+      // body
+      let col = z.prevPlayer ? '#5a3a3a' : (z.hitFlash>0? '#ff5555' : COLORS.zombie);
+      ctx.fillStyle=col; ctx.fillRect(px+8,py+8,16,16);
+      ctx.fillStyle=COLORS.zombie2; ctx.fillRect(px+10,py+12,12,8);
+      // head
+      ctx.fillStyle='#8a8a7a'; ctx.fillRect(px+10,py+4,12,10);
+      ctx.fillStyle='#2a1a0a'; ctx.fillRect(px+12,py+8,3,3); ctx.fillRect(px+18,py+8,3,3);
+      ctx.fillStyle='#5a0f0f'; ctx.fillRect(px+14,py+12,4,2);
+      // blood?
+      ctx.fillStyle='#5a0f0f'; ctx.fillRect(px+11,py+16,2,2);
+      // hp bar
+      if(z.hp<40){ ctx.fillStyle='#000'; ctx.fillRect(px+6,py+2,20,3); ctx.fillStyle='#ff3b3b'; ctx.fillRect(px+6,py+2,20*z.hp/40,3); }
+      // chase indicator
+      if(z.state==='chase'){ ctx.fillStyle='#ff0000'; ctx.fillRect(px+14,py-2,4,4); }
+    }
+
+    // player
+    if(this.player){
+      let px=this.player.x*TILE, py=this.player.y*TILE;
+      // shadow
+      ctx.fillStyle='#0004'; ctx.fillRect(px+8,py+24,16,6);
+      // body direction indicator (weapon swing)
+      let ang=this.player.angle;
+      // legs/bounce
+      let bob = Math.sin(performance.now()/150)*(this.player.running?2: this.player.sneaking?0.5:1);
+      // torso
+      ctx.fillStyle=this.player.hurtTimer>0?'#ffaaaa':'#3a6a9a'; ctx.fillRect(px+8,py+10+bob,16,14);
+      ctx.fillStyle='#2a4a6a'; ctx.fillRect(px+10,py+14+bob,12,6);
+      // head
+      ctx.fillStyle=COLORS.playerSkin; ctx.fillRect(px+10,py+4+bob,12,10);
+      ctx.fillStyle='#000'; ctx.fillRect(px+12,py+8+bob,3,3); ctx.fillRect(px+18,py+8+bob,3,3);
+      ctx.fillStyle='#4a1a1a'; ctx.fillRect(px+14,py+12+bob,4,2);
+      // hat? no
+      // weapon
+      let it=this.player.equippedItem;
+      let swing = this.player.swingProgress;
+      let weaponOff = swing>0 ? Math.sin(swing*Math.PI)*12 : 0;
+      let wx = px+16 + Math.cos(ang)* (16+weaponOff), wy = py+12+bob + Math.sin(ang)*(16+weaponOff);
+      if(it){
+        ctx.fillStyle='#6a4a2a'; ctx.fillRect(wx-3,wy-3,10,4);
+        ctx.fillStyle='#aaa'; ctx.fillRect(wx+4,wy-2,8,2);
+        // icon label
+        ctx.fillStyle='#fff'; ctx.font='10px monospace'; ctx.fillText(it.icon, wx-2, wy-6);
+      } else {
+        ctx.fillStyle=COLORS.playerSkin; ctx.fillRect(wx-2,wy-2,6,6);
+      }
+      // aim line
+      ctx.strokeStyle='#fff4'; ctx.beginPath(); ctx.moveTo(px+16,py+12); ctx.lineTo(px+16+Math.cos(ang)*40, py+12+Math.sin(ang)*40); ctx.stroke();
+      // sneaking indicator circle
+      if(this.player.sneaking){
+        ctx.strokeStyle='#00ff0040'; ctx.beginPath(); ctx.arc(px+16,py+16, 6,0,Math.PI*2); ctx.stroke();
+      }
+      // stamina/hp floating?
+      if(this.player.bleeding>0){ // bleeding particles
+        ctx.fillStyle='#ff0000'; ctx.fillRect(px+Math.sin(performance.now()/200)*4+12, py+4,3,3);
+      }
+    }
+
+    ctx.restore();
+
+    // night overlay
+    if(this.isNight){
+      let alpha=0.55;
+      if(this.player && this.player.flashlightOn) alpha=0.35;
+      // overall darkness
+      ctx.fillStyle='rgba(10,15,26,'+alpha+')'; ctx.fillRect(0,0,W,H);
+      // flashlight cone if on
+      if(this.player && this.player.flashlightOn){
+        let sx=W/2, sy=H/2;
+        // center light
+        let grad=ctx.createRadialGradient(sx,sy,20,sx,sy,260);
+        grad.addColorStop(0,'rgba(255, 240, 180, 0.45)');
+        grad.addColorStop(0.3,'rgba(255,230,120,0.18)');
+        grad.addColorStop(1,'rgba(0,0,0,0)');
+        ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(sx,sy,260,0,Math.PI*2); ctx.fill();
+        // cone
+        ctx.save(); ctx.translate(sx,sy); ctx.rotate(this.player.angle);
+        ctx.fillStyle='rgba(255,240,150,0.14)';
+        ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(280, -90); ctx.lineTo(280, 90); ctx.closePath(); ctx.fill();
+        ctx.restore();
+        // battery warning
+        if(this.player.battery<20){ ctx.fillStyle='rgba(255,0,0,0.08)'; ctx.fillRect(0,0,W,H); }
+      }
+      // vignette
+      let vg=ctx.createRadialGradient(W/2,H/2, W/3, W/2,H/2, Math.hypot(W,H)/1.2);
+      vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,0.6)');
+      ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
+    }
+
+    // weather overlay
+    if(this.weather==='rain'){
+      ctx.fillStyle='rgba(100,150,255,0.15)';
+      for(let i=0;i<120;i++){
+        let rx=(i*37 + performance.now()*0.3)%W, ry=(i*61 + performance.now()*0.6)%H;
+        ctx.fillRect(rx,ry,1,8);
+      }
+    } else if(this.weather==='fog'){
+      ctx.fillStyle='rgba(200,200,190,0.12)'; ctx.fillRect(0,0,W,H);
+    }
+
+    // crosshair position (center with mouse offset? actually we keep mouse)
+    // hud already handles
+
+    // noise indicator ring
+    if(this.noisePos){
+      let sx=this.noisePos.x*TILE - this.camX, sy=this.noisePos.y*TILE - this.camY;
+      let r=this.noiseRadius*TILE*(1 - this.noiseTimer/1.2*0.2);
+      ctx.strokeStyle='rgba(255,80,80,'+(this.noiseTimer)+')'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(sx,sy, r,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(sx,sy, 6,0,Math.PI*2); ctx.stroke();
+    }
+
+    // mini tutorial arrow to nearest house if day 1 and no loot
+    if(this.day===1 && this.player.buildingsLooted.size===0 && performance.now()%4000<2000){
+      ctx.fillStyle='rgba(255,220,100,0.9)'; ctx.font='11px monospace';
+      ctx.fillText('→ LOOT HOUSES (E)', W/2-60, 80);
+    }
+  }
+}
+
+// ---------- GLOBALS & INPUT ----------
+let game=new Game();
+let keys={}, mouse={x:0,y:0}, lastStep=0;
+
+function logMsg(t){
+  let el=document.getElementById('msgLog');
+  el.textContent='['+new Date().toLocaleTimeString().slice(0,5)+'] '+t;
+  el.style.background='#2a1a0f';
+  setTimeout(()=>el.style.background='#0f0d0a',600);
+}
+function rngChance(seed,p){
+  // deterministic cheap
+  let x=Math.sin(seed* 9301 + 49297)*233280; return (x-Math.floor(x))<p;
+}
+function updateHotbar(){
+  let hb=document.getElementById('hotbar');
+  hb.innerHTML='';
+  if(!game.player) return;
+  game.player.inv.forEach((it,i)=>{
+    let s=document.createElement('div'); s.className='slot'+(i===game.player.equipped?' active':'');
+    s.innerHTML=it.icon+'<small>'+(i+1)+'</small>';
+    s.title=it.name+' ('+it.w+'kg) '+ (it.dmg?('DMG '+it.dmg):'');
+    s.onclick=()=>{ game.player.equipped=i; updateHotbar(); game.refreshInv(); };
+    hb.appendChild(s);
+  });
+  for(let i=game.player.inv.length;i<6;i++){ let s=document.createElement('div'); s.className='slot'; s.innerHTML='<small>'+(i+1)+'</small>'; hb.appendChild(s); }
+}
+
+window.addEventListener('keydown',e=>{
+  let k=e.key.toLowerCase();
+  keys[k]=true;
+  if(k==='i'){ e.preventDefault(); game.toggleInv(); }
+  if(k==='e'){ game.tryInteract(); }
+  if(k==='f'){ if(game.player){ game.player.flashlightOn=!game.player.flashlightOn; logMsg('Flashlight '+(game.player.flashlightOn?'ON':'OFF')+' Battery '+Math.floor(game.player.battery)+'%'); beep(300,0.05,0.08,'sine'); } }
+  if(k==='r'){ if(game.player) game.player.dropEquipped(); }
+  if(k==='h'){ if(game.player) game.damage(100,'Suicide'); }
+  if(k===' ') { keys[' '] = true; keys['space']=true; e.preventDefault(); }
+  if(k>='1'&&k<='6'){ let idx=parseInt(k)-1; if(game.player && game.player.inv[idx]) { game.player.equipped=idx; updateHotbar(); game.refreshInv(); } }
+  if(k==='shift') keys['shift']=true;
+});
+window.addEventListener('keyup',e=>{
+  let k=e.key.toLowerCase();
+  keys[k]=false;
+  if(k===' ') { keys[' '] = false; keys['space']=false; }
+  if(k==='shift') keys['shift']=false;
+});
+window.addEventListener('mousemove',e=>{
+  mouse.x=e.clientX; mouse.y=e.clientY;
+  if(game.player){ let cx=game.canvas.width/2, cy=game.canvas.height/2; game.player.angle=Math.atan2(mouse.y-cy, mouse.x-cx); }
+  document.getElementById('cross').style.left=mouse.x+'px';
+  document.getElementById('cross').style.top=mouse.y+'px';
+});
+window.addEventListener('mousedown',e=>{
+  if(e.button===0){ if(!game.paused && game.player) game.doAttack(); }
+});
+window.addEventListener('wheel',e=>{
+  if(!game.player) return;
+  if(e.deltaY>0) game.player.equipped=Math.min(game.player.inv.length-1, game.player.equipped+1);
+  else game.player.equipped=Math.max(0, game.player.equipped-1);
+  updateHotbar();
+});
+window.addEventListener('resize',()=>game.resize());
+game.resize();
+
+// touch
+document.getElementById('mRun').addEventListener('touchstart',()=>keys['shift']=true);
+document.getElementById('mRun').addEventListener('touchend',()=>keys['shift']=false);
+document.getElementById('mSneak').addEventListener('touchstart',()=>keys[' ']=true);
+document.getElementById('mSneak').addEventListener('touchend',()=>keys[' ']=false);
+document.getElementById('mAtk').addEventListener('touchstart',()=>game.doAttack());
+document.getElementById('mInt').addEventListener('touchstart',()=>game.tryInteract());
+
+// prevent context menu
+document.addEventListener('contextmenu',e=>e.preventDefault());
+
+// init seed field random
+document.getElementById('seedInput').value=Math.floor(Math.random()*999999);
+
+// expose
+window.game=game;
+</script>
+</body>
 </html>
