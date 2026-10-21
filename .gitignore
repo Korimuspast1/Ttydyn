@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.vite/
+*.log
+*.idsig
+.DS_Store
+!WorldBox-Sandbox.apk
