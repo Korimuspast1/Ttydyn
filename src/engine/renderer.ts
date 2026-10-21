@@ -1342,4 +1342,55 @@ export class WorldRenderer {
     ctx.fillStyle = '#332924';
     ctx.fillRect(0, H - 6, W, 6);
   }
+
+  public moveCameraTo(gx: number, gy: number): void {
+    this.camX = gx;
+    this.camY = gy;
+    this.clampCamera();
+  }
+
+  public renderMinimap(targetCanvas: HTMLCanvasElement): void {
+    const ctx = targetCanvas.getContext('2d');
+    if (!ctx) return;
+    const W = targetCanvas.width;
+    const H = targetCanvas.height;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(this.offscreenCanvas, 0, 0, W, H);
+
+    const sx = W / WORLD_W;
+    const sy = H / WORLD_H;
+
+    // Settlement capital dots
+    for (const s of this.entities.settlements) {
+      if (s.population <= 0 && s.buildings <= 0) continue;
+      const pal = KINGDOM_PALETTES[s.kingdom % KINGDOM_PALETTES.length];
+      const px = Math.round(s.centerX * sx);
+      const py = Math.round(s.centerY * sy);
+      ctx.fillStyle = '#130e0b';
+      ctx.fillRect(px - 2, py - 2, 5, 5);
+      ctx.fillStyle = pal.light;
+      ctx.fillRect(px - 1, py - 1, 3, 3);
+    }
+
+    // Dragon radar blips
+    ctx.fillStyle = '#ff4d4f';
+    for (let d = 0; d < this.entities.dragonCount; d++) {
+      ctx.fillRect(Math.round(this.entities.dx[d] * sx) - 1, Math.round(this.entities.dy[d] * sy) - 1, 3, 3);
+    }
+
+    // Current viewport rectangle
+    const halfW = this.logicalWidth * 0.5 / this.zoom;
+    const halfH = this.logicalHeight * 0.5 / this.zoom;
+    const vx = Math.max(0, Math.round((this.camX - halfW) * sx));
+    const vy = Math.max(0, Math.round((this.camY - halfH) * sy));
+    const vw = Math.min(W - vx, Math.max(4, Math.round(halfW * 2 * sx)));
+    const vh = Math.min(H - vy, Math.max(4, Math.round(halfH * 2 * sy)));
+
+    ctx.strokeStyle = '#130e0b';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(vx, vy, vw, vh);
+    ctx.strokeStyle = '#ffe066';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(vx + 0.5, vy + 0.5, Math.max(1, vw - 1), Math.max(1, vh - 1));
+  }
 }

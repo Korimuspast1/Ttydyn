@@ -1,0 +1,19 @@
+{
+  "name": "zomboid-box-city-sim",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@fontsource/pixelify-sans": "^5.1.0",
+    "@fontsource/press-start-2p": "^5.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.2",
+    "vite": "^5.4.8"
+  }
+}

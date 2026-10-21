@@ -4,4 +4,14 @@ dist/
 *.log
 *.idsig
 .DS_Store
+desktop/generated_assets.hpp
+public/WorldBox-Sandbox.exe
+public/WorldBox-Sandbox.apk
+!WorldBox-Sandbox.exe
+!WorldBox-Sandbox-Linux-x64
 !WorldBox-Sandbox.apk
+
+# Zomboid 2.5D build & deps
+zomboid-sim/node_modules/
+zomboid-sim/dist/
+zomboid-sim/public/Zomboid-Knox-PC.exe
