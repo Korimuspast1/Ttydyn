@@ -740,6 +740,20 @@ function update(dt, now) {
     if (c.x < -260 || c.x > W + 260) passingCars.splice(i, 1);
   }
 
+  // проезжающие машины не пропускают сквозь себя — мягко отодвигают игрока
+  if (player.mode === 'walk') {
+    for (const c of passingCars) {
+      const dx = Math.abs(player.x - c.x);
+      const dy = Math.abs(player.y - c.y);
+      if (dx < c.w / 2 + 12 && dy < c.h / 2 + 10) {
+        const side = player.y < c.y ? -1 : 1;
+        const ny = c.y + side * (c.h / 2 + 12);
+        if (!isBlocked(player.x, ny, 10)) player.y = ny;
+        else player.y = c.y - side * (c.h / 2 + 12);
+      }
+    }
+  }
+
   // качели
   if (player.mode === 'swing') {
     state.swingActive = true;

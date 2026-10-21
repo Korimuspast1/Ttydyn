@@ -39,7 +39,30 @@ for (const o of circles) {
   console.log('ПРОХОД СКВОЗЬ ПРЕПЯТСТВИЕ: circle', `@${o.x},${o.y}`); fail++;
 }
 
-// 4. игрок не должен застрять при старте
+// 4. стены держат: идём прямо в каждый объект — игрок не должен войти внутрь
+function walkInto(cx, cy, label) {
+  for (let a = 0; a < 16; a++) {
+    const ang = (a / 16) * Math.PI * 2;
+    let px = cx + Math.cos(ang) * 110;
+    let py = cy + Math.sin(ang) * 110;
+    if (isBlocked(px, py, 10)) continue; // стартовать негде — пробуем другую сторону
+    let inside = false;
+    for (let step = 0; step < 60; step++) {
+      const d = Math.hypot(cx - px, cy - py);
+      if (d < 3) { inside = true; break; }
+      const nx = px + ((cx - px) / d) * 4;
+      const ny = py + ((cy - py) / d) * 4;
+      if (isBlocked(nx, ny, 10)) break; // упёрлись в стену — стена работает
+      px = nx; py = ny;
+    }
+    if (inside) { console.log('ВОШЁЛ ВНУТРЬ ОБЪЕКТА:', label, `@${cx},${cy}`); fail++; return; }
+    return; // хоть с одной стороны стена держит
+  }
+}
+for (const o of rects) walkInto(o.x + o.w / 2, o.y + o.h / 2, o.tag);
+for (const o of circles) walkInto(o.x, o.y, 'circle');
+
+// 5. игрок не должен застрять при старте
 if (isBlocked(600, 900, 10)) { console.log('СТАРТОВАЯ ТОЧКА ЗАБЛОКИРОВАНА'); fail++; }
 
 console.log(fail ? `ПРОВАЛОВ: ${fail}` : 'КОЛЛИЗИИ OK');
