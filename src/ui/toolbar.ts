@@ -7,9 +7,18 @@ import {
   SavedWorldSummary,
   ToolId,
   ToolbarTab,
+  WORLD_H,
+  WORLD_W,
 } from '../engine/types';
 import { WorldState } from '../engine/world';
-import { isNativeAndroidApk, triggerHaptic } from '../platform/mobileBridge';
+import {
+  isNativeAndroidApk,
+  isNativePcApp,
+  pcOpenSavesFolder,
+  pcQuitNativeApp,
+  toggleDesktopFullscreen,
+  triggerHaptic,
+} from '../platform/mobileBridge';
 import { createPixelIconCanvas, PixelIconName } from './pixelIcons';
 
 export interface ToolbarCallbacks {
@@ -18,6 +27,10 @@ export interface ToolbarCallbacks {
   onSetTimeScale: (scale: number) => void;
   onSetTouchPanMode: (panMode: boolean) => void;
   onStepZoom: (factor: number) => void;
+  onJumpMinimap: (gx: number, gy: number) => void;
+  onSetEdgeScroll: (enabled: boolean) => void;
+  onTakeScreenshot: () => void;
+  onQuickLoad: () => void;
   onSetBatterySaver: (enabled: boolean) => void;
   onGenerateNewRandomWorld: () => void;
   onSaveGame: (name?: string) => void;
@@ -46,9 +59,12 @@ export class WorldBoxUI {
   public topLeftHidden = false;
   public bottomHidden = false;
 
+  public minimapCanvas!: HTMLCanvasElement;
   public geoSliceCanvas!: HTMLCanvasElement;
   private topLeftEl!: HTMLElement;
+  private versionTagEl!: HTMLElement;
   private quickBarEl!: HTMLElement;
+  private pcNativeSlotEl!: HTMLElement;
   private mobileMenuBtn!: HTMLButtonElement;
   private restoreTopLeftBtn!: HTMLButtonElement;
   private dockWrapperEl!: HTMLElement;
@@ -91,6 +107,67 @@ export class WorldBoxUI {
     this.syncSpeedHighlight();
     this.syncPanModeUI();
     this.switchTab('all', false);
+  }
+
+  public markNativePcReady(platform: string): void {
+    const label = platform === 'win32' ? 'PC WINDOWS .EXE' : 'PC DESKTOP EDITION';
+    if (this.versionTagEl) {
+      this.versionTagEl.textContent = `v3.6 ${label}`;
+    }
+    this.renderPcNativeButtons();
+  }
+
+  private renderPcNativeButtons(): void {
+    if (!this.pcNativeSlotEl) return;
+    this.pcNativeSlotEl.innerHTML = '';
+
+    if (isNativePcApp()) {
+      const folderBtn = document.createElement('button');
+      folderBtn.className = 'wb-mini-btn wb-mini-apk';
+      folderBtn.textContent = '📂 ПАПКА МИРОВ';
+      folderBtn.title = 'Открыть системную папку сохранений на компьютере';
+      folderBtn.addEventListener('click', () => {
+        this.sfx.playUiClick(680);
+        void pcOpenSavesFolder();
+      });
+
+      const quitBtn = document.createElement('button');
+      quitBtn.className = 'wb-mini-btn wb-mini-danger';
+      quitBtn.textContent = '⏻ ВЫХОД';
+      quitBtn.title = 'Закрыть игру и вернуться на рабочий стол';
+      quitBtn.addEventListener('click', () => {
+        this.sfx.playUiClick(360);
+        void pcQuitNativeApp();
+      });
+
+      this.pcNativeSlotEl.appendChild(folderBtn);
+      this.pcNativeSlotEl.appendChild(quitBtn);
+    } else if (!isNativeAndroidApk()) {
+      const exeLink = document.createElement('a');
+      exeLink.href = './WorldBox-Sandbox.exe';
+      exeLink.download = 'WorldBox-Sandbox.exe';
+      exeLink.className = 'wb-mini-btn wb-mini-exe';
+      exeLink.textContent = '🖥 СКАЧАТЬ .EXE (ПК)';
+      exeLink.title = 'Скачать автономный порт для Windows 10/11 (WorldBox-Sandbox.exe)';
+      exeLink.addEventListener('click', () => {
+        triggerHaptic('tool');
+        this.sfx.playUiClick(740);
+      });
+
+      const apkLink = document.createElement('a');
+      apkLink.href = './WorldBox-Sandbox.apk';
+      apkLink.download = 'WorldBox-Sandbox.apk';
+      apkLink.className = 'wb-mini-btn wb-mini-apk';
+      apkLink.textContent = '📱 APK';
+      apkLink.title = 'Скачать Android-версию (WorldBox-Sandbox.apk)';
+      apkLink.addEventListener('click', () => {
+        triggerHaptic('tool');
+        this.sfx.playUiClick(720);
+      });
+
+      this.pcNativeSlotEl.appendChild(exeLink);
+      this.pcNativeSlotEl.appendChild(apkLink);
+    }
   }
 
   public showEventToast(message: string, color = '#ffd466'): void {
@@ -193,7 +270,7 @@ export class WorldBoxUI {
     if (saves.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'wb-saves-empty';
-      empty.textContent = 'Нет сохранений — нажмите «💾 Сохранить», чтобы сохранить мир!';
+      empty.textContent = 'Нет сохранений — нажмите «💾 Сохранить» (или F5 на ПК)!';
       this.savesListEl.appendChild(empty);
       return;
     }
@@ -262,14 +339,14 @@ export class WorldBoxUI {
     this.eventBannerEl.className = 'wb-panel wb-event-banner';
     this.root.appendChild(this.eventBannerEl);
 
-    // 1. Top-Left WorldBox HUD Plaque (Compact Single-Bar on Mobile, Full Plaque on Desktop!)
+    // 1. Top-Left WorldBox HUD Plaque
     const topLeft = document.createElement('div');
     topLeft.className = 'wb-panel wb-top-left';
     topLeft.innerHTML = `
       <div class="wb-brand-row">
         <span class="wb-crown-dot"></span>
         <span class="wb-game-title">WORLDBOX</span>
-        <span class="wb-version-tag">v3.5 MOBILE + PC</span>
+        <span id="wb-version-tag" class="wb-version-tag">${isNativePcApp() ? 'v3.6 PC DESKTOP' : 'v3.6 PC + MOBILE'}</span>
         <button id="wb-hide-top-left" class="wb-collapse-btn" title="Скрыть верхнюю панель (H)">▲</button>
       </div>
       <div class="wb-stats-row">
@@ -286,10 +363,11 @@ export class WorldBoxUI {
         <button id="wb-mobile-hide-top" class="wb-collapse-btn wb-mobile-only-inline" title="Скрыть HUD">▲</button>
       </div>
       <div class="wb-hints-row">
-        ЛКМ / Касание: сила Бога &bull; 2 пальца / ПКМ: зум и камера &bull; Наведи / [I]: паспорт жителя
+        ЛКМ: сила &bull; ПКМ/WASD+Shift: камера &bull; Колесо: зум &bull; Ctrl+Колесо: кисть &bull; F5/F9: сохр. &bull; F11: экран &bull; F12: скриншот
       </div>
     `;
     this.topLeftEl = topLeft;
+    this.versionTagEl = topLeft.querySelector('#wb-version-tag')!;
     this.root.appendChild(topLeft);
 
     this.restoreTopLeftBtn = document.createElement('button');
@@ -364,7 +442,7 @@ export class WorldBoxUI {
     const newWorldBtn = document.createElement('button');
     newWorldBtn.className = 'wb-mini-btn wb-mini-text-btn';
     newWorldBtn.textContent = '🎲 НОВЫЙ МИР';
-    newWorldBtn.title = 'Сгенерировать полностью новый случайный мир!';
+    newWorldBtn.title = 'Сгенерировать полностью новый случайный мир (R)';
     newWorldBtn.addEventListener('click', () => {
       triggerHaptic('heavy');
       this.sfx.playUiClick(640);
@@ -374,14 +452,41 @@ export class WorldBoxUI {
 
     const quickSaveBtn = document.createElement('button');
     quickSaveBtn.className = 'wb-mini-btn wb-mini-text-btn wb-mini-save';
-    quickSaveBtn.textContent = '💾 СОХРАНИТЬ';
-    quickSaveBtn.title = 'Быстро сохранить текущую игру в слот';
+    quickSaveBtn.textContent = '💾 СОХР. [F5]';
+    quickSaveBtn.title = 'Быстро сохранить текущую игру (F5)';
     quickSaveBtn.addEventListener('click', () => {
       triggerHaptic('tool');
       this.sfx.playUiClick(700);
       this.callbacks.onSaveGame();
       this.refreshSavesList();
       this.setMobileMenuOpen(false);
+    });
+
+    const quickLoadBtn = document.createElement('button');
+    quickLoadBtn.className = 'wb-mini-btn wb-mini-text-btn wb-desktop-only';
+    quickLoadBtn.textContent = '📂 ЗАГР. [F9]';
+    quickLoadBtn.title = 'Быстро загрузить последнее сохранение (F9)';
+    quickLoadBtn.addEventListener('click', () => {
+      this.sfx.playUiClick(650);
+      this.callbacks.onQuickLoad();
+    });
+
+    const fullscreenBtn = document.createElement('button');
+    fullscreenBtn.className = 'wb-mini-btn wb-mini-text-btn wb-desktop-only';
+    fullscreenBtn.textContent = '⛶ ЭКРАН [F11]';
+    fullscreenBtn.title = 'Полноэкранный режим на ПК (F11)';
+    fullscreenBtn.addEventListener('click', () => {
+      this.sfx.playUiClick(640);
+      toggleDesktopFullscreen();
+    });
+
+    const shotBtn = document.createElement('button');
+    shotBtn.className = 'wb-mini-btn wb-mini-text-btn wb-desktop-only';
+    shotBtn.textContent = '📸 СКРИН [F12]';
+    shotBtn.title = 'Сделать чёткий пиксельный скриншот мира (F12)';
+    shotBtn.addEventListener('click', () => {
+      this.sfx.playUiClick(720);
+      this.callbacks.onTakeScreenshot();
     });
 
     const bordersBtn = document.createElement('button');
@@ -396,9 +501,9 @@ export class WorldBoxUI {
     });
 
     const quickEcoBtn = document.createElement('button');
-    quickEcoBtn.className = 'wb-mini-btn wb-mini-text-btn';
+    quickEcoBtn.className = 'wb-mini-btn wb-mini-text-btn wb-mobile-only-inline';
     quickEcoBtn.textContent = '⚡ FPS: МАКС';
-    quickEcoBtn.title = 'Режим экономии заряда батареи и плавности на телефоне';
+    quickEcoBtn.title = 'Режим экономии заряда батареи на телефоне';
     quickEcoBtn.addEventListener('click', () => {
       triggerHaptic('tap');
       this.sfx.playUiClick(600);
@@ -406,32 +511,25 @@ export class WorldBoxUI {
     });
     this.ecoButtons.push(quickEcoBtn);
 
+    this.pcNativeSlotEl = document.createElement('span');
+    this.pcNativeSlotEl.className = 'wb-native-slot';
+
     quickBar.appendChild(soundBtn);
     quickBar.appendChild(zoomTownBtn);
     quickBar.appendChild(fitBtn);
     quickBar.appendChild(newWorldBtn);
     quickBar.appendChild(quickSaveBtn);
+    quickBar.appendChild(quickLoadBtn);
+    quickBar.appendChild(fullscreenBtn);
+    quickBar.appendChild(shotBtn);
     quickBar.appendChild(bordersBtn);
     quickBar.appendChild(quickEcoBtn);
+    quickBar.appendChild(this.pcNativeSlotEl);
 
-    // Direct 1-click Android APK Download button when running in Web Browser!
-    if (!isNativeAndroidApk()) {
-      const apkLink = document.createElement('a');
-      apkLink.href = './WorldBox-Sandbox.apk';
-      apkLink.download = 'WorldBox-Sandbox.apk';
-      apkLink.className = 'wb-mini-btn wb-mini-apk';
-      apkLink.textContent = '📱 СКАЧАТЬ APK';
-      apkLink.title = 'Скачать скомпилированный Android пакет WorldBox-Sandbox.apk';
-      apkLink.addEventListener('click', () => {
-        triggerHaptic('tool');
-        this.sfx.playUiClick(740);
-      });
-      quickBar.appendChild(apkLink);
-    }
-
+    this.renderPcNativeButtons();
     topLeft.appendChild(quickBar);
 
-    // 1B. Ergonomic Right-Edge Thumb Controls Dock (Touch Pan/Paint Mode + +/- Zoom + Inspect + Town!)
+    // 1B. Ergonomic Right-Edge Thumb Controls Dock (Touch / Mobile devices)
     const thumbDock = document.createElement('div');
     thumbDock.className = 'wb-panel wb-thumb-dock';
 
@@ -490,35 +588,74 @@ export class WorldBoxUI {
     this.thumbDockEl = thumbDock;
     this.root.appendChild(thumbDock);
 
-    // 2. Top-Right Live Geo-Slice & Cursor Tile Inspector (Desktop)
+    // 2. Top-Right PC Interactive Minimap Radar + Live Geo-Slice & Cursor Tile Inspector
     const topRight = document.createElement('div');
     topRight.className = 'wb-panel wb-top-right';
 
+    const mapHeader = document.createElement('div');
+    mapHeader.className = 'wb-slice-header';
+    mapHeader.textContent = 'МИНИ-КАРТА МИРА';
+
+    this.minimapCanvas = document.createElement('canvas');
+    this.minimapCanvas.width = 160;
+    this.minimapCanvas.height = 100;
+    this.minimapCanvas.className = 'wb-minimap-canvas';
+    this.minimapCanvas.title = 'Кликните или зажмите ЛКМ для быстрого перемещения камеры по миру';
+
+    let draggingMinimap = false;
+    const jumpFromMinimapEvent = (ev: PointerEvent) => {
+      const rect = this.minimapCanvas.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      const nx = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
+      const ny = Math.max(0, Math.min(1, (ev.clientY - rect.top) / rect.height));
+      this.callbacks.onJumpMinimap(nx * WORLD_W, ny * WORLD_H);
+    };
+    this.minimapCanvas.addEventListener('pointerdown', (ev) => {
+      draggingMinimap = true;
+      try {
+        this.minimapCanvas.setPointerCapture(ev.pointerId);
+      } catch {
+        // Ignore
+      }
+      this.sfx.playUiClick(620);
+      jumpFromMinimapEvent(ev);
+    });
+    this.minimapCanvas.addEventListener('pointermove', (ev) => {
+      if (draggingMinimap) jumpFromMinimapEvent(ev);
+    });
+    const endMiniDrag = () => {
+      draggingMinimap = false;
+    };
+    this.minimapCanvas.addEventListener('pointerup', endMiniDrag);
+    this.minimapCanvas.addEventListener('pointercancel', endMiniDrag);
+
     const sliceHeader = document.createElement('div');
-    sliceHeader.className = 'wb-slice-header';
+    sliceHeader.className = 'wb-slice-header wb-slice-subhdr';
     sliceHeader.textContent = 'РАЗРЕЗ ПОРОД';
 
     this.geoSliceCanvas = document.createElement('canvas');
     this.geoSliceCanvas.width = 119;
-    this.geoSliceCanvas.height = 72;
+    this.geoSliceCanvas.height = 64;
     this.geoSliceCanvas.className = 'wb-slice-canvas';
 
     this.inspectorStatsEl = document.createElement('div');
     this.inspectorStatsEl.className = 'wb-inspector-stats';
     this.inspectorStatsEl.innerHTML = 'Наведи курсор на мир';
 
+    topRight.appendChild(mapHeader);
+    topRight.appendChild(this.minimapCanvas);
     topRight.appendChild(sliceHeader);
     topRight.appendChild(this.geoSliceCanvas);
     topRight.appendChild(this.inspectorStatsEl);
     this.inspectorPanelEl = topRight;
     this.root.appendChild(topRight);
 
-    // 2B. Floating Individual Unit Passport Card (Traits, Swim Ability, HP, Damage, Speed!)
+    // 2B. Floating Individual Unit Passport Card
     this.unitPassportEl = document.createElement('div');
     this.unitPassportEl.className = 'wb-panel wb-unit-passport wb-panel-hidden';
     this.root.appendChild(this.unitPassportEl);
 
-    // 3. Bottom WorldBox Power Dock (HIDEABLE & TOUCH-SWIPEABLE!)
+    // 3. Bottom WorldBox Power Dock
     const dockWrapper = document.createElement('div');
     dockWrapper.className = 'wb-dock-wrapper';
     this.dockWrapperEl = dockWrapper;
@@ -534,7 +671,6 @@ export class WorldBoxUI {
     });
     this.root.appendChild(this.restoreBottomBtn);
 
-    // Floating Info Description Banner
     const infoPlaque = document.createElement('div');
     infoPlaque.className = 'wb-info-plaque';
     this.tooltipTitleEl = document.createElement('span');
@@ -545,11 +681,9 @@ export class WorldBoxUI {
     infoPlaque.appendChild(this.tooltipDescEl);
     dockWrapper.appendChild(infoPlaque);
 
-    // Brush + Speed + Collapse Compact Control Row
     const controlsBar = document.createElement('div');
     controlsBar.className = 'wb-dock-top-bar';
 
-    // Category Tabs Scrollable Strip
     const tabsRow = document.createElement('div');
     tabsRow.className = 'wb-tabs-strip';
 
@@ -559,7 +693,7 @@ export class WorldBoxUI {
       { id: 'kingdoms', label: 'Народы и Войны', shortLabel: 'Народы', icon: 'war' },
       { id: 'chaos', label: 'Погода и Кары', shortLabel: 'Погода/Кары', icon: 'nuke' },
       { id: 'saves', label: 'Мир и Сохранения', shortLabel: 'Миры', icon: 'save' },
-      { id: 'physics', label: 'Физика', shortLabel: 'Физика', icon: 'physics' },
+      { id: 'physics', label: 'Физика и ПК', shortLabel: 'Физика', icon: 'physics' },
     ];
 
     for (const t of tabSpecs) {
@@ -586,7 +720,6 @@ export class WorldBoxUI {
     const rightControls = document.createElement('div');
     rightControls.className = 'wb-dock-controls-inline';
 
-    // Brush size pills
     const brushGroup = document.createElement('div');
     brushGroup.className = 'wb-pill-group';
     const brushTitle = document.createElement('span');
@@ -598,7 +731,7 @@ export class WorldBoxUI {
       const btn = document.createElement('button');
       btn.className = 'wb-chip-btn';
       btn.textContent = b.label;
-      btn.title = `Размер кисти: ${b.label} ([ / ])`;
+      btn.title = `Размер кисти: ${b.label} ([ / ] или Ctrl+Колесо мыши)`;
       btn.addEventListener('click', () => {
         triggerHaptic('tap');
         this.setBrushIndex(idx, true);
@@ -607,7 +740,6 @@ export class WorldBoxUI {
       brushGroup.appendChild(btn);
     });
 
-    // Time speed pills
     const speedGroup = document.createElement('div');
     speedGroup.className = 'wb-pill-group';
     const speedTitle = document.createElement('span');
@@ -620,9 +752,10 @@ export class WorldBoxUI {
       { val: 1, text: '1x' },
       { val: 2, text: '2x' },
       { val: 5, text: '5x' },
+      { val: 10, text: '10x', pcExtra: true },
     ]) {
       const btn = document.createElement('button');
-      btn.className = 'wb-chip-btn';
+      btn.className = 'wb-chip-btn' + (s.pcExtra ? ' wb-desktop-only' : '');
       btn.textContent = s.text;
       btn.addEventListener('click', () => {
         triggerHaptic('tap');
@@ -650,7 +783,6 @@ export class WorldBoxUI {
     controlsBar.appendChild(rightControls);
     dockWrapper.appendChild(controlsBar);
 
-    // Main Beveled Wooden Shelf
     const shelf = document.createElement('div');
     shelf.className = 'wb-shelf';
 
@@ -708,7 +840,7 @@ export class WorldBoxUI {
 
     const newRandomBtn = document.createElement('button');
     newRandomBtn.className = 'wb-action-card wb-action-highlight';
-    newRandomBtn.innerHTML = '<span>🎲 НОВЫЙ СЛУЧАЙНЫЙ МИР</span><small>100% рандом</small>';
+    newRandomBtn.innerHTML = '<span>🎲 НОВЫЙ СЛУЧАЙНЫЙ МИР</span><small>100% рандом [R]</small>';
     newRandomBtn.addEventListener('click', () => {
       triggerHaptic('heavy');
       this.sfx.playUiClick(660);
@@ -816,7 +948,7 @@ export class WorldBoxUI {
     this.tabContainers.saves = savesTray;
     shelf.appendChild(savesTray);
 
-    // TAB 6: PHYSICS & MOBILE PERFORMANCE SETTINGS
+    // TAB 6: PHYSICS & PC / PERFORMANCE SETTINGS
     const physicsTray = document.createElement('div');
     physicsTray.className = 'wb-tray wb-physics-tray';
 
@@ -888,6 +1020,11 @@ export class WorldBoxUI {
 
     physicsTray.appendChild(gravWrap);
     physicsTray.appendChild(seaWrap);
+    physicsTray.appendChild(
+      makeToggle('Прокрутка краем (ПК)', false, (c) => {
+        this.callbacks.onSetEdgeScroll(c);
+      }),
+    );
     physicsTray.appendChild(ecoToggleBtn);
     physicsTray.appendChild(
       makeToggle('Океан', this.world.settings.openOceanEdges, (c) => {
@@ -905,7 +1042,7 @@ export class WorldBoxUI {
       }),
     );
     physicsTray.appendChild(
-      makeToggle('Разрез пород', this.world.settings.showCrossSection, (c) => {
+      makeToggle('Мини-карта и разрез', this.world.settings.showCrossSection, (c) => {
         this.world.settings.showCrossSection = c;
         this.inspectorPanelEl.style.display = c ? '' : 'none';
       }),
@@ -948,7 +1085,6 @@ export class WorldBoxUI {
 
     btn.addEventListener('click', () => {
       triggerHaptic('tool');
-      // Selecting any power automatically activates Paint mode on touch devices!
       if (this.touchPanMode) {
         this.setTouchPanMode(false, false);
       }
@@ -1049,7 +1185,6 @@ export class WorldBoxUI {
     const riseStr = info.seaRise > 0.15 ? ` +${info.seaRise.toFixed(1)}м` : '';
     this.weatherBadgeEl.textContent = `${weatherLabels[info.weather] || '☀ Ясно'}${riseStr}`;
 
-    // Render Live Individual Unit Traits & Stats Passport!
     if (info.unit) {
       const u = info.unit;
       const statusHtml = [

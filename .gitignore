@@ -4,4 +4,9 @@ dist/
 *.log
 *.idsig
 .DS_Store
+desktop/generated_assets.hpp
+public/WorldBox-Sandbox.exe
+public/WorldBox-Sandbox.apk
+!WorldBox-Sandbox.exe
+!WorldBox-Sandbox-Linux-x64
 !WorldBox-Sandbox.apk

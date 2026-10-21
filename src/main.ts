@@ -12,7 +12,15 @@ import {
   WORLD_W,
 } from './engine/types';
 import { WorldState } from './engine/world';
-import { isMobileViewportOrTouch, triggerHaptic } from './platform/mobileBridge';
+import {
+  captureWorldScreenshot,
+  initPcNativeBridge,
+  isMobileViewportOrTouch,
+  pcQuitNativeApp,
+  pcSendHeartbeat,
+  toggleDesktopFullscreen,
+  triggerHaptic,
+} from './platform/mobileBridge';
 import { WorldBoxUI } from './ui/toolbar';
 
 const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
@@ -35,19 +43,20 @@ let brushIndex = 2; // 'M' default
 let timeScale = 1;
 let touchPanMode = false;
 let batterySaver = false;
+let pcEdgeScroll = false;
 let appBackgroundPaused = false;
+let mouseInsideWindow = false;
 
 let isPainting = false;
 let isPanning = false;
-let lastMouseX = 0;
-let lastMouseY = 0;
+let lastMouseX = window.innerWidth * 0.5;
+let lastMouseY = window.innerHeight * 0.5;
 let prevPaintGx = -1;
 let prevPaintGy = -1;
 let cursorGx = WORLD_W * 0.5;
 let cursorGy = WORLD_H * 0.5;
 let cursorInBounds = false;
 
-// Multi-touch Pinch-to-Zoom + 2-Finger Pan + Deferred Stroke Start (prevents accidental tap drops during pinch!)
 interface TrackedPointer {
   x: number;
   y: number;
@@ -94,6 +103,32 @@ window.addEventListener('orientationchange', () => {
   }, 60);
 });
 
+async function triggerScreenshotAction(): Promise<void> {
+  renderer.render(
+    performance.now() / 1000,
+    cursorGx,
+    cursorGy,
+    false,
+    activeTool,
+    BRUSH_SIZES[brushIndex].radius,
+  );
+  const saved = await captureWorldScreenshot(canvas);
+  if (saved) {
+    ui.showEventToast(`📸 Скриншот сохранён: ${saved}`, '#99e9f2');
+  }
+}
+
+function triggerQuickLoadAction(): void {
+  physics.clearParticles();
+  const loaded = saveManager.loadLatestWorld(world, entities);
+  if (loaded) {
+    renderer.fitCameraToViewport();
+    ui.showEventToast(`📂 Быстрая загрузка: «${loaded.name}»`, '#ffd466');
+  } else {
+    ui.showEventToast('⚠ Нет сохранённых миров — нажмите F5 для быстрого сохранения!', '#ff9c92');
+  }
+}
+
 const ui = new WorldBoxUI(uiRoot, world, sfx, {
   onSelectTool: (tool) => {
     activeTool = tool;
@@ -126,13 +161,32 @@ const ui = new WorldBoxUI(uiRoot, world, sfx, {
     renderer.camY += before.gy - after.gy;
     renderer.clampCamera();
   },
+  onJumpMinimap: (gx, gy) => {
+    renderer.moveCameraTo(gx, gy);
+    updateCursorFromScreen(lastMouseX, lastMouseY);
+  },
+  onSetEdgeScroll: (enabled) => {
+    pcEdgeScroll = enabled;
+    ui.showEventToast(
+      enabled
+        ? '🖥 Прокрутка камеры у краёв экрана включена'
+        : '🖥 Прокрутка камеры у краёв экрана выключена',
+      '#99e9f2',
+    );
+  },
+  onTakeScreenshot: () => {
+    void triggerScreenshotAction();
+  },
+  onQuickLoad: () => {
+    triggerQuickLoadAction();
+  },
   onSetBatterySaver: (enabled) => {
     batterySaver = enabled;
     renderer.lowPowerFx = enabled;
     resizeCanvas();
     ui.showEventToast(
       enabled
-        ? '🔋 Экономия заряда включена: снижено разрешение DPR и число частиц погоды'
+        ? '🔋 Экономия ресурсов включена: снижено разрешение DPR и число частиц погоды'
         : '⚡ Максимальная чёткость и частота кадров включены!',
       enabled ? '#8ce99a' : '#ffd466',
     );
@@ -241,7 +295,26 @@ entities.onWorldEvent = (message, color) => {
   ui.showEventToast(message, color);
 };
 
-// Native Android Lifecycle & Hardware Back Button Hooks
+// Connect to Native PC Desktop Runtime (.exe / Linux binary) if running natively on PC!
+void initPcNativeBridge().then(async (status) => {
+  if (!status) return;
+  ui.markNativePcReady(status.platform);
+  const synced = await saveManager.syncFromPcDisk();
+  if (synced > 0) {
+    ui.refreshSavesList();
+  }
+  ui.showEventToast(
+    `🖥 Запущена ПК-версия! Сохранения: ${status.savesDir}`,
+    '#b197fc',
+  );
+  window.setInterval(() => {
+    void pcSendHeartbeat();
+  }, 2000);
+  window.addEventListener('beforeunload', () => {
+    void pcQuitNativeApp();
+  });
+});
+
 window.__wbSetPaused = (paused: boolean) => {
   appBackgroundPaused = paused;
   sfx.setSuspended(paused);
@@ -278,13 +351,20 @@ function getTwoPointers(): [TrackedPointer, TrackedPointer] | null {
 }
 
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+canvas.addEventListener('pointerenter', () => {
+  mouseInsideWindow = true;
+});
+canvas.addEventListener('pointerleave', () => {
+  mouseInsideWindow = false;
+});
 
 canvas.addEventListener('pointerdown', (e) => {
   sfx.unlock();
+  mouseInsideWindow = true;
   try {
     canvas.setPointerCapture(e.pointerId);
   } catch {
-    // Ignore on synthetic events
+    // Ignore
   }
 
   activePointers.set(e.pointerId, {
@@ -296,7 +376,6 @@ canvas.addEventListener('pointerdown', (e) => {
     pointerType: e.pointerType,
   });
 
-  // Two-finger Pinch-to-Zoom + Pan! Immediately cancel any unconfirmed single-finger stroke!
   if (activePointers.size >= 2) {
     gestureWasMultiTouch = true;
     pendingTouchStroke = false;
@@ -320,7 +399,6 @@ canvas.addEventListener('pointerdown', (e) => {
   lastMouseY = e.clientY;
   updateCursorFromScreen(e.clientX, e.clientY);
 
-  // Desktop middle/right click OR Alt+Drag OR Mobile One-Thumb Camera Mode!
   if (e.button === 1 || e.button === 2 || keysHeld.has('Alt') || touchPanMode) {
     if (e.button === 2 && cursorInBounds && !touchPanMode) {
       entities.selectUnitNear(cursorGx, cursorGy, 4.5);
@@ -333,7 +411,6 @@ canvas.addEventListener('pointerdown', (e) => {
 
   if (e.button === 0) {
     if (e.pointerType === 'touch') {
-      // Short 65ms multi-touch guard so starting a 2-finger pinch never drops an accidental Nuke/Meteor!
       pendingTouchStroke = true;
       prevPaintGx = cursorGx;
       prevPaintGy = cursorGy;
@@ -350,13 +427,13 @@ canvas.addEventListener('pointerdown', (e) => {
 });
 
 canvas.addEventListener('pointermove', (e) => {
+  mouseInsideWindow = true;
   const tracked = activePointers.get(e.pointerId);
   if (tracked) {
     tracked.x = e.clientX;
     tracked.y = e.clientY;
   }
 
-  // Handle smooth 2-finger Pinch-to-Zoom + Pan!
   if (activePointers.size >= 2) {
     const pair = getTwoPointers();
     if (pair) {
@@ -395,7 +472,6 @@ canvas.addEventListener('pointermove', (e) => {
     renderer.camY -= dy / renderer.zoom;
     renderer.clampCamera();
   } else if (pendingTouchStroke && tracked && !gestureWasMultiTouch) {
-    // Confirm single-finger paint stroke immediately once finger starts drawing cleanly!
     if (Math.hypot(e.clientX - tracked.startX, e.clientY - tracked.startY) > 6) {
       pendingTouchStroke = false;
       isPainting = true;
@@ -415,12 +491,10 @@ function finishPointer(e: PointerEvent): void {
 
   if (activePointers.size === 0) {
     if (!gestureWasMultiTouch && tracked) {
-      // Quick single-finger tap in Paint Mode that lifted before the 65ms guard -> fire clean single tap!
       if (pendingTouchStroke && cursorInBounds) {
         triggerHaptic(activeTool === 'nuke' || activeTool === 'meteor' ? 'heavy' : 'tap');
         physics.applyBrush(activeTool, cursorGx, cursorGy, BRUSH_SIZES[brushIndex].radius, 1 / 60);
       } else if (touchPanMode && !panDragMoved && cursorInBounds) {
-        // Quick tap in Camera Mode inspects any creature under your finger!
         if (entities.selectUnitNear(cursorGx, cursorGy, 5.2)) {
           triggerHaptic('tool');
         }
@@ -451,6 +525,11 @@ canvas.addEventListener(
   'wheel',
   (e) => {
     e.preventDefault();
+    // PC Pro Shortcut: Ctrl + Wheel (or Alt + Wheel) changes Brush Size on the fly!
+    if (e.ctrlKey || e.altKey) {
+      ui.setBrushIndex(brushIndex + (e.deltaY < 0 ? 1 : -1), true);
+      return;
+    }
     const before = renderer.screenToWorld(e.clientX, e.clientY);
     const zoomFactor = e.deltaY < 0 ? 1.14 : 1 / 1.14;
     renderer.zoom *= zoomFactor;
@@ -464,13 +543,44 @@ canvas.addEventListener(
   { passive: false },
 );
 
-// Keyboard shortcuts across powers + camera + hide UI panels + unit inspect + random world
+// Full PC Keyboard Controls: Powers, Brush, Speed, Fullscreen [F11], Screenshot [F12], QuickSave [F5], QuickLoad [F9]
 window.addEventListener('keydown', (e) => {
   if (document.activeElement && document.activeElement.tagName === 'INPUT') {
     return;
   }
   keysHeld.add(e.key);
   const code = e.code;
+
+  if (code === 'F5') {
+    e.preventDefault();
+    sfx.playUiClick(720);
+    const saved = saveManager.saveWorld(world, entities, `Быстрое #${world.seed % 10000}`);
+    ui.refreshSavesList();
+    ui.showEventToast(`💾 Быстрое сохранение [F5]: «${saved.name}»`, '#6ce2ff');
+    return;
+  }
+  if (code === 'F9') {
+    e.preventDefault();
+    sfx.playUiClick(650);
+    triggerQuickLoadAction();
+    return;
+  }
+  if (code === 'F11') {
+    e.preventDefault();
+    sfx.playUiClick(640);
+    toggleDesktopFullscreen();
+    return;
+  }
+  if (code === 'F12') {
+    e.preventDefault();
+    sfx.playUiClick(740);
+    void triggerScreenshotAction();
+    return;
+  }
+  if (code === 'Escape') {
+    ui.closeTransientPopups();
+    return;
+  }
 
   if (code === 'Digit1') ui.selectTool('sand', true);
   else if (code === 'Digit2') ui.selectTool('water', true);
@@ -494,6 +604,10 @@ window.addEventListener('keydown', (e) => {
   else if (code === 'Space') {
     e.preventDefault();
     ui.setTimeScale(timeScale === 0 ? 1 : 0, true);
+  } else if (code === 'Backquote') {
+    const order = [1, 2, 5, 10];
+    const next = order[(order.indexOf(timeScale) + 1) % order.length];
+    ui.setTimeScale(next, true);
   } else if (code === 'KeyH') {
     sfx.playUiClick(520);
     ui.toggleAllPanels();
@@ -636,7 +750,6 @@ function frame(now: number): void {
   lastTime = now;
   fpsSmooth = fpsSmooth * 0.92 + (1 / rawDt) * 0.08;
 
-  // Confirm held stationary touch stroke after 65ms if still only 1 finger down!
   if (pendingTouchStroke && activePointers.size === 1 && !gestureWasMultiTouch) {
     const p = activePointers.values().next().value as TrackedPointer;
     if (now - p.downAt >= 65) {
@@ -649,8 +762,9 @@ function frame(now: number): void {
     }
   }
 
-  // WASD / Arrows camera movement
-  const panSpeed = (160 / renderer.zoom) * rawDt;
+  // WASD / Arrows + Shift Sprint + Optional PC RTS Screen-Edge Panning
+  const sprintMult = keysHeld.has('Shift') ? 2.35 : 1.0;
+  const panSpeed = (180 / renderer.zoom) * sprintMult * rawDt;
   let movedCam = false;
   if (keysHeld.has('w') || keysHeld.has('W') || keysHeld.has('ц') || keysHeld.has('Ц') || keysHeld.has('ArrowUp')) {
     renderer.camY -= panSpeed;
@@ -668,6 +782,26 @@ function frame(now: number): void {
     renderer.camX += panSpeed;
     movedCam = true;
   }
+
+  if (pcEdgeScroll && mouseInsideWindow && !isPainting && !isPanning) {
+    const margin = 18;
+    const edgeSpeed = (145 / renderer.zoom) * rawDt;
+    if (lastMouseX <= margin) {
+      renderer.camX -= edgeSpeed;
+      movedCam = true;
+    } else if (lastMouseX >= window.innerWidth - margin) {
+      renderer.camX += edgeSpeed;
+      movedCam = true;
+    }
+    if (lastMouseY <= margin) {
+      renderer.camY -= edgeSpeed;
+      movedCam = true;
+    } else if (lastMouseY >= window.innerHeight - margin) {
+      renderer.camY += edgeSpeed;
+      movedCam = true;
+    }
+  }
+
   if (movedCam) {
     renderer.clampCamera();
     updateCursorFromScreen(lastMouseX, lastMouseY);
@@ -687,9 +821,8 @@ function frame(now: number): void {
     prevPaintGy = cursorGy;
   }
 
-  // Substep coalescing: caps heavy grid scans to <= 2 passes/frame even at 5x simulation speed!
   if (timeScale > 0) {
-    const maxPasses = batterySaver ? 1 : 2;
+    const maxPasses = batterySaver ? 1 : timeScale >= 10 ? 4 : 2;
     const passes = Math.min(timeScale, maxPasses);
     const stepDt = (timeScale / passes) * (1 / 60);
     for (let s = 0; s < passes; s++) {
@@ -708,6 +841,7 @@ function frame(now: number): void {
   );
 
   if (world.settings.showCrossSection && !isMobileViewportOrTouch()) {
+    renderer.renderMinimap(ui.minimapCanvas);
     renderer.renderGeoSlice(ui.geoSliceCanvas, cursorGx, cursorGy, cursorInBounds);
   }
 
