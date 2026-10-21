@@ -330,6 +330,13 @@ function frame(now: number): void {
 sim.step(0.05);
 requestAnimationFrame(frame);
 
+// Native Desktop .EXE / Linux Window Heartbeat & Clean Shutdown Hook (`?pc=1`)
+if (typeof window !== 'undefined' && window.location.search.includes('pc=1')) {
+  setInterval(() => {
+    fetch('/__pc/heartbeat').catch(() => {});
+  }, 2500);
+}
+
 (window as unknown as Record<string, unknown>).__ZOMBOID_APP__ = {
   getWorld: () => world,
   getSim: () => sim,
