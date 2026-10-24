@@ -8,8 +8,10 @@ Duckgomz is a native Android messaging app written in Java. It uses a dark, Tele
 - Usernames are 4–32 characters, use Latin letters, digits, and `_`, start with a letter, and end with a letter or digit. The reserved username `duckgomz` is used by the local demo bot.
 - Real-time chat lists and message updates between signed-in accounts using Firebase Cloud Firestore.
 - Private groups with up to 20 members; members can add other users by username.
-- File attachments stored in Firebase Storage, limited to 20 MB per file.
-- Four main tabs: Chats, Contacts, Settings, and Profile. Channels are intentionally not included.
+- File attachments stored in Firebase Storage, limited to 20 MB per file; images preview inline, with file type/size labels, an open action, and a save-to-device action.
+- Chat appearance controls for all chats: five color themes, dark/dim/light chat modes, message text size, bubble corners, sender-name color, and a locally selected wallpaper.
+- Privacy controls for new private-chat requests (enforced by Firestore rules), hiding chat-list previews, blocking screenshots/screen recording, and clearing the encrypted device cache.
+- Four main tabs: Chats, Contacts, Settings, and Profile. Search in Chats or Contacts starts a private chat by username; the Chats “+” action creates groups only. Channels are intentionally not included.
 - Springy press feedback on buttons and tappable rows, plus a glossy, elastic bottom-tab indicator inspired by iPhone Liquid Glass movement.
 - Original Duckgomz geometric-duck branding, including the selected launcher icon in `artifacts/Duckgomz-icon.png` and original vector assets in `android/app/src/main/assets/svg/`.
 - A device-local Duckgomz demo bot. Its messages and attachment metadata are stored in an AES-GCM encrypted local history using an Android Keystore key.
@@ -42,7 +44,7 @@ The repository includes `firestore.rules`, `storage.rules`, `firestore.indexes.j
 ### Data model
 
 - `usernames/{lowercaseUsername}` maps an available username to its Firebase Auth UID.
-- `users/{uid}` stores the account's public username and creation timestamp.
+- `users/{uid}` stores the account's public username, creation timestamp, and `allowDirectMessages` privacy flag. A new private chat can be created only when the target account allows new chat requests.
 - `chats/{chatId}` stores chat type, title, member UIDs, member usernames, and a short last-message preview.
 - `chats/{chatId}/messages/{messageId}` stores message text or attachment metadata.
 - `chatAttachments/{chatId}/{messageId}` stores uploaded file contents in Firebase Storage.

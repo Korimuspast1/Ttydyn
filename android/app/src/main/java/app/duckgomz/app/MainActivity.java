@@ -4,15 +4,18 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
 import android.database.Cursor;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Typeface;
-import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.OpenableColumns;
+import android.util.LruCache;
 import android.text.InputFilter;
 import android.text.InputType;
 import android.view.Gravity;
@@ -25,11 +28,13 @@ import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
+import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.view.animation.DecelerateInterpolator;
@@ -53,6 +58,7 @@ import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
+import com.google.android.material.switchmaterial.SwitchMaterial;
 import com.google.firebase.Timestamp;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseAuthException;
@@ -64,7 +70,6 @@ import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.FirebaseFirestoreSettings;
 import com.google.firebase.firestore.ListenerRegistration;
 import com.google.firebase.firestore.Query;
-import com.google.firebase.firestore.QuerySnapshot;
 import com.google.firebase.firestore.SetOptions;
 import com.google.firebase.firestore.WriteBatch;
 import com.google.firebase.storage.FirebaseStorage;
@@ -75,6 +80,10 @@ import org.json.JSONArray;
 import org.json.JSONException;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
@@ -85,12 +94,15 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends AppCompatActivity {
     private static final int BLUE = Color.rgb(91, 121, 247);
@@ -100,7 +112,19 @@ public class MainActivity extends AppCompatActivity {
     private static final int TEXT = Color.rgb(244, 245, 250);
     private static final int MUTED = Color.rgb(161, 166, 184);
     private static final int DIVIDER = Color.rgb(57, 59, 77);
-    private static final int CHAT_BG = Color.rgb(31, 32, 46);
+    private static final String[] CHAT_THEME_NAMES = new String[]{"Midnight", "Ocean", "Violet", "Forest", "Ember"};
+    private static final int[] CHAT_THEME_BACKGROUNDS = new int[]{
+            Color.rgb(31, 32, 46), Color.rgb(20, 39, 48), Color.rgb(35, 27, 48),
+            Color.rgb(22, 39, 33), Color.rgb(47, 32, 28)
+    };
+    private static final int[] CHAT_THEME_BUBBLES = new int[]{
+            Color.rgb(83, 107, 225), Color.rgb(36, 125, 151), Color.rgb(126, 82, 183),
+            Color.rgb(56, 139, 104), Color.rgb(181, 97, 69)
+    };
+    private static final int[] NAME_COLORS = new int[]{
+            Color.rgb(145, 164, 255), Color.rgb(73, 190, 220), Color.rgb(196, 136, 255),
+            Color.rgb(123, 214, 162), Color.rgb(255, 160, 128), Color.rgb(250, 213, 117)
+    };
     private static final String ACCOUNT_DOMAIN = "@duckgomz.app";
     private static final String BOT_NAME = "Duckgomz";
     private static final String BOT_USERNAME = "@duckgomz";
@@ -118,6 +142,22 @@ public class MainActivity extends AppCompatActivity {
     private FirebaseStorage firebaseStorage;
     private SharedPreferences preferences;
     private ActivityResultLauncher<Intent> filePicker;
+    private ActivityResultLauncher<Intent> wallpaperPicker;
+    private ActivityResultLauncher<Intent> saveAttachmentPicker;
+    private ChatMessage pendingSaveMessage;
+    private final ExecutorService ioExecutor = Executors.newFixedThreadPool(2);
+    private final LruCache<String, Bitmap> imagePreviewCache = new LruCache<String, Bitmap>(8 * 1024 * 1024) {
+        @Override
+        protected int sizeOf(String key, Bitmap value) {
+            return value.getByteCount();
+        }
+    };
+    private final Set<String> pendingImagePreviews = new HashSet<>();
+    private Bitmap loadedWallpaperBitmap;
+    private String loadedWallpaperUri = "";
+    private ImageView wallpaperPreview;
+    private ImageView chatWallpaperView;
+    private SwitchMaterial directMessageToggle;
     private ListenerRegistration chatListListener;
     private ListenerRegistration messageListener;
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -132,6 +172,12 @@ public class MainActivity extends AppCompatActivity {
     private boolean activeBotChat;
     private boolean storageAvailable = true;
     private boolean cloudErrorShown;
+    private boolean allowDirectMessages = true;
+    private boolean hideChatPreviews;
+    private boolean blockScreenshots;
+    private boolean chatCustomizationOpen;
+    private boolean privacySettingsOpen;
+    private boolean customizationReturnToConversation;
     private int currentTab = TAB_CHATS;
     private ChatThread activeThread;
     private RecyclerView messageList;
@@ -145,6 +191,9 @@ public class MainActivity extends AppCompatActivity {
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         applySystemBars();
         preferences = getSharedPreferences("duckgomz", MODE_PRIVATE);
+        hideChatPreviews = preferences.getBoolean("hide_chat_previews", false);
+        blockScreenshots = preferences.getBoolean("block_screenshots", false);
+        applyScreenshotPrivacy();
         firebaseAuth = FirebaseAuth.getInstance();
         firestore = FirebaseFirestore.getInstance();
         synchronized (MainActivity.class) {
@@ -162,10 +211,23 @@ public class MainActivity extends AppCompatActivity {
         root.setBackgroundColor(BG);
         setContentView(root);
         installSystemBarInsets();
+        loadWallpaperFromPreferences();
 
         filePicker = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
             if (result.getResultCode() == RESULT_OK && result.getData() != null && result.getData().getData() != null) {
                 onPickedFile(result.getData());
+            }
+        });
+        wallpaperPicker = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
+            if (result.getResultCode() == RESULT_OK && result.getData() != null && result.getData().getData() != null) {
+                onWallpaperPicked(result.getData());
+            }
+        });
+        saveAttachmentPicker = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
+            if (result.getResultCode() == RESULT_OK && result.getData() != null && result.getData().getData() != null) {
+                saveAttachmentToUri(result.getData().getData());
+            } else {
+                pendingSaveMessage = null;
             }
         });
 
@@ -183,6 +245,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         activityDestroyed = true;
         handler.removeCallbacksAndMessages(null);
+        ioExecutor.shutdownNow();
         removeMessageListener();
         removeChatListListener();
         super.onDestroy();
@@ -190,6 +253,10 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
+        if (chatCustomizationOpen || privacySettingsOpen) {
+            closeSettingsSubpage();
+            return;
+        }
         if (conversationOpen) {
             showMainTab(currentTab);
             return;
@@ -265,7 +332,7 @@ public class MainActivity extends AppCompatActivity {
 
         LinearLayout form = new LinearLayout(this);
         form.setOrientation(LinearLayout.VERTICAL);
-        form.setPadding(0, dp(48), 0, dp(8));
+        form.setPadding(0, dp(34), 0, dp(8));
         page.addView(form, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         TextView title = text(registerMode ? "Create account" : "Sign in", 27, TEXT, true);
@@ -281,7 +348,7 @@ public class MainActivity extends AppCompatActivity {
         TextInputEditText usernameInput = (TextInputEditText) usernameLayout.getEditText();
         usernameInput.setSingleLine(true);
         usernameInput.setImeOptions(EditorInfo.IME_ACTION_NEXT);
-        addField(form, usernameLayout, dp(34));
+        addField(form, usernameLayout, dp(27));
 
         TextInputLayout passwordLayout = createInput("Password", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         TextInputEditText passwordInput = (TextInputEditText) passwordLayout.getEditText();
@@ -339,11 +406,6 @@ public class MainActivity extends AppCompatActivity {
             showAuthScreen();
         });
 
-        TextView phoneNote = text("No phone number required", 11, Color.rgb(128, 134, 154), false);
-        phoneNote.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams noteParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        noteParams.topMargin = dp(38);
-        page.addView(phoneNote, noteParams);
     }
 
     private TextInputLayout createInput(String hint, int inputType) {
@@ -351,12 +413,14 @@ public class MainActivity extends AppCompatActivity {
         layout.setHint(hint);
         layout.setBoxBackgroundMode(TextInputLayout.BOX_BACKGROUND_OUTLINE);
         layout.setBoxCornerRadii(dp(12), dp(12), dp(12), dp(12));
-        layout.setBoxStrokeColor(Color.rgb(76, 79, 101));
-        layout.setHintTextColor(ColorStateList.valueOf(MUTED));
-        layout.setBoxBackgroundColor(Color.TRANSPARENT);
+        int[][] strokeStates = new int[][]{new int[]{android.R.attr.state_focused}, new int[]{}};
+        int[] strokeColors = new int[]{BLUE, Color.rgb(116, 123, 151)};
+        layout.setBoxStrokeColorStateList(new ColorStateList(strokeStates, strokeColors));
+        layout.setHintTextColor(ColorStateList.valueOf(Color.rgb(193, 199, 216)));
+        layout.setBoxBackgroundColor(Color.rgb(45, 47, 66));
         if (hint.toLowerCase(Locale.ROOT).contains("password")) {
             layout.setEndIconMode(TextInputLayout.END_ICON_PASSWORD_TOGGLE);
-            layout.setEndIconTintList(ColorStateList.valueOf(MUTED));
+            layout.setEndIconTintList(ColorStateList.valueOf(Color.rgb(191, 197, 216)));
         } else {
             layout.setEndIconMode(TextInputLayout.END_ICON_NONE);
         }
@@ -364,7 +428,7 @@ public class MainActivity extends AppCompatActivity {
         editText.setInputType(inputType);
         editText.setTextSize(16);
         editText.setTextColor(TEXT);
-        editText.setHintTextColor(MUTED);
+        editText.setHintTextColor(Color.rgb(193, 199, 216));
         editText.setPadding(dp(14), dp(15), dp(14), dp(12));
         layout.addView(editText, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(58)));
         return layout;
@@ -486,11 +550,13 @@ public class MainActivity extends AppCompatActivity {
             profile.put("username", normalizedUsername);
             profile.put("usernameLower", normalizedUsername);
             if (!profileSnapshot.exists()) profile.put("createdAt", FieldValue.serverTimestamp());
+            if (!profileSnapshot.contains("allowDirectMessages")) profile.put("allowDirectMessages", true);
             transaction.set(profileRef, profile, SetOptions.merge());
             return null;
         }).addOnSuccessListener(unused -> {
             if (activityDestroyed) return;
             username = normalizedUsername;
+            loadCloudPrivacySettings(uid);
             registerMode = false;
             authError = "";
             if (submit != null) {
@@ -607,12 +673,18 @@ public class MainActivity extends AppCompatActivity {
         boolean animateTabChange = tab != previousTab;
         currentTab = tab;
         conversationOpen = false;
+        chatCustomizationOpen = false;
+        privacySettingsOpen = false;
+        customizationReturnToConversation = false;
+        directMessageToggle = null;
         activeThread = null;
         activeBotChat = false;
         removeMessageListener();
         messageList = null;
         messageAdapter = null;
         composer = null;
+        chatWallpaperView = null;
+        wallpaperPreview = null;
         root.removeAllViews();
         root.setBackgroundColor(BG);
 
@@ -643,8 +715,8 @@ public class MainActivity extends AppCompatActivity {
             addProfile(content);
         }
 
-        if (tab == TAB_CHATS || tab == TAB_CONTACTS) {
-            ImageButton add = imageButton(R.drawable.ic_plus, "Create chat");
+        if (tab == TAB_CHATS) {
+            ImageButton add = imageButton(R.drawable.ic_plus, "Create a group");
             add.setColorFilter(Color.WHITE);
             add.setBackground(rippleRounded(BLUE, dp(20)));
             add.setElevation(dp(7));
@@ -652,7 +724,7 @@ public class MainActivity extends AppCompatActivity {
             addParams.rightMargin = dp(18);
             addParams.bottomMargin = dp(18);
             body.addView(add, addParams);
-            add.setOnClickListener(view -> showCreateChatOptions());
+            add.setOnClickListener(view -> showNewGroupSheet());
         }
         screen.addView(createBottomNavigation(tab, previousTab, animateTabChange));
         if (animateTabChange) {
@@ -684,7 +756,7 @@ public class MainActivity extends AppCompatActivity {
             LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
             titleParams.leftMargin = dp(11);
             toolbar.addView(title, titleParams);
-            ImageButton search = imageButton(R.drawable.ic_search, "Find a user");
+            ImageButton search = imageButton(R.drawable.ic_search, "Find a username to start a private chat");
             search.setColorFilter(TEXT);
             toolbar.addView(search, new LinearLayout.LayoutParams(dp(44), dp(44)));
             search.setOnClickListener(view -> showNewDirectChatSheet());
@@ -696,10 +768,10 @@ public class MainActivity extends AppCompatActivity {
             TextView title = text(tabTitle(tab), 22, TEXT, true);
             toolbar.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
             if (tab == TAB_CONTACTS) {
-                ImageButton addContact = imageButton(R.drawable.ic_plus, "Add contact");
-                addContact.setColorFilter(TEXT);
-                toolbar.addView(addContact, new LinearLayout.LayoutParams(dp(44), dp(44)));
-                addContact.setOnClickListener(view -> showNewDirectChatSheet());
+                ImageButton findContact = imageButton(R.drawable.ic_search, "Find a username to start a private chat");
+                findContact.setColorFilter(TEXT);
+                toolbar.addView(findContact, new LinearLayout.LayoutParams(dp(44), dp(44)));
+                findContact.setOnClickListener(view -> showNewDirectChatSheet());
             } else if (tab == TAB_PROFILE) {
                 ImageButton more = imageButton(R.drawable.ic_more, "More options");
                 more.setColorFilter(TEXT);
@@ -723,7 +795,7 @@ public class MainActivity extends AppCompatActivity {
         content.addView(makeChatRow(botThread(), false));
         addRowDivider(content, dp(78));
         if (remoteThreads.isEmpty()) {
-            TextView hint = text("Your private chats and groups will appear here.", 12, MUTED, false);
+            TextView hint = text("Tap search to start a private chat by username, or + to create a group.", 12, MUTED, false);
             hint.setGravity(Gravity.CENTER);
             hint.setPadding(dp(30), dp(24), dp(30), dp(20));
             content.addView(hint, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -793,7 +865,7 @@ public class MainActivity extends AppCompatActivity {
         name.setSingleLine(true);
         name.setEllipsize(android.text.TextUtils.TruncateAt.END);
         titleRow.addView(name, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        String previewText = chatPreview(thread);
+        String previewText = hideChatPreviews ? "Message preview hidden" : chatPreview(thread);
         TextView preview = text(previewText, 13, MUTED, false);
         preview.setSingleLine(true);
         preview.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -1030,9 +1102,9 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout.LayoutParams sectionParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         sectionParams.setMargins(dp(18), dp(18), dp(18), dp(9));
         content.addView(section, sectionParams);
-        addSettingsRow(content, R.drawable.ic_tab_settings, "Appearance", "Dark theme", () -> showToast("Duckgomz is using the dark theme."));
+        addSettingsRow(content, R.drawable.ic_tab_settings, "Chat appearance", "Themes, wallpaper, text size and message shape", () -> showChatAppearance(false));
         addRowDivider(content, dp(58));
-        addSettingsRow(content, R.drawable.ic_info, "Privacy & Security", "Cloud chats are not end-to-end encrypted", this::showPrivacySheet);
+        addSettingsRow(content, R.drawable.ic_info, "Privacy & Security", "Control chat requests, previews and screenshots", this::showPrivacySettings);
         addRowDivider(content, dp(58));
         addSettingsRow(content, R.drawable.ic_tab_profile, "Account", "@" + username, () -> showMainTab(TAB_PROFILE));
 
@@ -1103,14 +1175,586 @@ public class MainActivity extends AppCompatActivity {
         signOut.setOnClickListener(view -> signOut());
     }
 
-    private void showPrivacySheet() {
+    private LinearLayout createSettingsPage(String title) {
+        chatWallpaperView = null;
+        wallpaperPreview = null;
+        root.removeAllViews();
+        root.setBackgroundColor(BG);
+        LinearLayout screen = new LinearLayout(this);
+        screen.setOrientation(LinearLayout.VERTICAL);
+        screen.setBackgroundColor(BG);
+        root.addView(screen, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        LinearLayout toolbar = new LinearLayout(this);
+        toolbar.setOrientation(LinearLayout.HORIZONTAL);
+        toolbar.setGravity(Gravity.CENTER_VERTICAL);
+        toolbar.setPadding(dp(7), dp(5), dp(16), dp(5));
+        screen.addView(toolbar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(60)));
+        ImageButton back = imageButton(R.drawable.ic_arrow_back, "Back");
+        back.setColorFilter(TEXT);
+        toolbar.addView(back, new LinearLayout.LayoutParams(dp(44), dp(44)));
+        back.setOnClickListener(view -> closeSettingsSubpage());
+        TextView heading = text(title, 19, TEXT, true);
+        LinearLayout.LayoutParams headingParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        headingParams.leftMargin = dp(8);
+        toolbar.addView(heading, headingParams);
+        View divider = new View(this);
+        divider.setBackgroundColor(DIVIDER);
+        screen.addView(divider, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)));
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setClipToPadding(false);
+        screen.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(18), dp(13), dp(18), dp(30));
+        scroll.addView(content, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        return content;
+    }
+
+    private void closeSettingsSubpage() {
+        boolean returnToChat = customizationReturnToConversation && activeThread != null;
+        chatCustomizationOpen = false;
+        privacySettingsOpen = false;
+        customizationReturnToConversation = false;
+        directMessageToggle = null;
+        if (returnToChat) {
+            conversationOpen = true;
+            activeBotChat = activeThread.isBot();
+            showConversation();
+            if (!activeBotChat) listenToMessages(activeThread);
+        } else {
+            showMainTab(TAB_SETTINGS);
+        }
+    }
+
+    private void showPrivacySettings() {
+        privacySettingsOpen = true;
+        chatCustomizationOpen = false;
+        customizationReturnToConversation = false;
+        LinearLayout content = createSettingsPage("Privacy & Security");
+        addPageSection(content, "MESSAGES");
+        TextView intro = text("Choose who can start conversations with you and what appears on this device.", 13, MUTED, false);
+        intro.setLineSpacing(dp(3), 1f);
+        content.addView(intro, pageItemParams(0, 0, 0, 8));
+
+        directMessageToggle = addSwitchSetting(content, "Allow new private chats",
+                "Other Duckgomz users can create a new one-to-one chat with your account.", allowDirectMessages);
+        bindDirectMessageToggle(directMessageToggle);
+        directMessageToggle.setEnabled(false);
+        loadCloudPrivacySettings(currentUid());
+        addPageDivider(content);
+
+        SwitchMaterial previewToggle = addSwitchSetting(content, "Hide chat previews",
+                "Replace the latest-message text in your Chats and Contacts lists on this device.", hideChatPreviews);
+        previewToggle.setOnCheckedChangeListener((button, enabled) -> {
+            hideChatPreviews = enabled;
+            preferences.edit().putBoolean("hide_chat_previews", enabled).apply();
+        });
+        addPageDivider(content);
+
+        SwitchMaterial screenshotToggle = addSwitchSetting(content, "Block screenshots and screen recording",
+                "Use Android's secure-window protection while Duckgomz is open on this device.", blockScreenshots);
+        screenshotToggle.setOnCheckedChangeListener((button, enabled) -> {
+            blockScreenshots = enabled;
+            preferences.edit().putBoolean("block_screenshots", enabled).apply();
+            applyScreenshotPrivacy();
+        });
+
+        addPageSection(content, "ON-DEVICE DATA");
+        TextView encryptionNotice = text("The local message cache is encrypted with an Android Keystore key. Cloud messages and attachments use TLS and are stored in Firebase. Duckgomz does not provide end-to-end encryption.", 13, MUTED, false);
+        encryptionNotice.setLineSpacing(dp(4), 1f);
+        encryptionNotice.setPadding(dp(14), dp(13), dp(14), dp(13));
+        encryptionNotice.setBackground(rounded(SURFACE, Color.TRANSPARENT, dp(12)));
+        content.addView(encryptionNotice, pageItemParams(0, 8, 0, 8));
+
+        MaterialButton clearCache = primaryButton("Clear encrypted message cache");
+        clearCache.setBackgroundTintList(ColorStateList.valueOf(Color.rgb(68, 48, 62)));
+        clearCache.setTextColor(Color.rgb(255, 151, 163));
+        content.addView(clearCache, pageItemParams(0, 5, 0, 0));
+        clearCache.setOnClickListener(view -> confirmClearEncryptedCache());
+    }
+
+    private void loadCloudPrivacySettings(String uid) {
+        if (uid == null || uid.isEmpty() || firestore == null) return;
+        firestore.collection("users").document(uid).get()
+                .addOnSuccessListener(document -> {
+                    if (document.exists() && document.contains("allowDirectMessages")) {
+                        allowDirectMessages = Boolean.TRUE.equals(document.getBoolean("allowDirectMessages"));
+                    }
+                    if (directMessageToggle != null) {
+                        directMessageToggle.setOnCheckedChangeListener(null);
+                        directMessageToggle.setChecked(allowDirectMessages);
+                        bindDirectMessageToggle(directMessageToggle);
+                        directMessageToggle.setEnabled(true);
+                    }
+                })
+                .addOnFailureListener(error -> {
+                    if (directMessageToggle != null) directMessageToggle.setEnabled(true);
+                });
+    }
+
+    private void bindDirectMessageToggle(SwitchMaterial toggle) {
+        toggle.setOnCheckedChangeListener((button, enabled) -> {
+            FirebaseUser current = firebaseAuth.getCurrentUser();
+            if (current == null) {
+                restoreDirectMessageToggle(toggle, allowDirectMessages);
+                return;
+            }
+            boolean previous = allowDirectMessages;
+            toggle.setEnabled(false);
+            firestore.collection("users").document(current.getUid())
+                    .update("allowDirectMessages", enabled)
+                    .addOnSuccessListener(unused -> {
+                        allowDirectMessages = enabled;
+                        toggle.setEnabled(true);
+                    })
+                    .addOnFailureListener(error -> {
+                        restoreDirectMessageToggle(toggle, previous);
+                        showToast("Privacy setting was not saved. Check your connection and Firestore rules.");
+                    });
+        });
+    }
+
+    private void restoreDirectMessageToggle(SwitchMaterial toggle, boolean value) {
+        toggle.setOnCheckedChangeListener(null);
+        toggle.setChecked(value);
+        toggle.setEnabled(true);
+        bindDirectMessageToggle(toggle);
+    }
+
+    private SwitchMaterial addSwitchSetting(LinearLayout parent, String title, String description, boolean checked) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(2), dp(11), dp(2), dp(11));
+        parent.addView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout copy = new LinearLayout(this);
+        copy.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams copyParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        copyParams.rightMargin = dp(12);
+        row.addView(copy, copyParams);
+        copy.addView(text(title, 14, TEXT, true));
+        TextView detail = text(description, 12, MUTED, false);
+        detail.setLineSpacing(dp(2), 1f);
+        LinearLayout.LayoutParams detailParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        detailParams.topMargin = dp(4);
+        copy.addView(detail, detailParams);
+
+        SwitchMaterial toggle = new SwitchMaterial(this);
+        toggle.setUseMaterialThemeColors(false);
+        toggle.setThumbTintList(new ColorStateList(
+                new int[][]{new int[]{android.R.attr.state_checked}, new int[]{}},
+                new int[]{Color.rgb(182, 194, 255), Color.rgb(137, 141, 159)}));
+        toggle.setTrackTintList(new ColorStateList(
+                new int[][]{new int[]{android.R.attr.state_checked}, new int[]{}},
+                new int[]{Color.rgb(79, 96, 160), Color.rgb(70, 72, 89)}));
+        row.addView(toggle, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        toggle.setChecked(checked);
+        row.setOnClickListener(view -> toggle.toggle());
+        return toggle;
+    }
+
+    private void confirmClearEncryptedCache() {
         BottomSheetDialog dialog = new BottomSheetDialog(this);
-        LinearLayout sheet = createSheet("Privacy & Security");
-        TextView copy = text("Local history is encrypted with a device-only Android Keystore key. Cloud messages and files are sent over TLS and stored in Firebase. This app does not provide end-to-end encryption.", 14, MUTED, false);
-        copy.setLineSpacing(dp(4), 1f);
-        sheet.addView(copy, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        addSheetButton(sheet, "Close", dialog::dismiss, true);
+        LinearLayout sheet = createSheet("Clear local message cache?");
+        TextView message = text("This removes only encrypted message copies stored on this device. Cloud messages and files are not deleted.", 13, MUTED, false);
+        message.setLineSpacing(dp(4), 1f);
+        sheet.addView(message, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        MaterialButton cancel = primaryButton("Cancel");
+        cancel.setBackgroundTintList(ColorStateList.valueOf(SURFACE_ALT));
+        LinearLayout.LayoutParams cancelParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
+        cancelParams.topMargin = dp(10);
+        sheet.addView(cancel, cancelParams);
+        cancel.setOnClickListener(view -> dialog.dismiss());
+        MaterialButton clear = primaryButton("Clear cache");
+        clear.setBackgroundTintList(ColorStateList.valueOf(Color.rgb(92, 49, 61)));
+        clear.setTextColor(Color.rgb(255, 161, 172));
+        LinearLayout.LayoutParams clearParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
+        clearParams.topMargin = dp(9);
+        sheet.addView(clear, clearParams);
+        clear.setOnClickListener(view -> {
+            dialog.dismiss();
+            Map<String, ?> all = preferences.getAll();
+            SharedPreferences.Editor editor = preferences.edit();
+            for (String key : all.keySet()) {
+                if (key.startsWith("chat_v1_") || key.startsWith("history_v1_") || key.startsWith("messages_")) {
+                    editor.remove(key);
+                }
+            }
+            editor.apply();
+            imagePreviewCache.evictAll();
+            clearCacheDirectory(new File(getCacheDir(), "image_previews"));
+            clearCacheDirectory(new File(getCacheDir(), "attachments"));
+            botMessages.clear();
+            botMessages.add(welcomeMessage());
+            storageAvailable = true;
+            saveBotMessages();
+            showToast("Encrypted message cache cleared from this device.");
+        });
         showDarkSheet(dialog, sheet);
+    }
+
+    private void clearCacheDirectory(File directory) {
+        if (directory == null || !directory.isDirectory()) return;
+        File[] files = directory.listFiles();
+        if (files == null) return;
+        for (File file : files) {
+            if (file.isFile()) file.delete();
+        }
+    }
+
+    private void applyScreenshotPrivacy() {
+        if (getWindow() == null) return;
+        if (blockScreenshots) getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
+    }
+
+    private void addPageSection(LinearLayout content, String title) {
+        TextView label = text(title, 10, MUTED, true);
+        label.setLetterSpacing(.08f);
+        content.addView(label, pageItemParams(0, 19, 0, 7));
+    }
+
+    private void addPageDivider(LinearLayout content) {
+        View divider = new View(this);
+        divider.setBackgroundColor(DIVIDER);
+        LinearLayout.LayoutParams params = pageItemParams(0, 0, 0, 0);
+        params.height = dp(1);
+        content.addView(divider, params);
+    }
+
+    private LinearLayout.LayoutParams pageItemParams(int left, int top, int right, int bottom) {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.setMargins(dp(left), dp(top), dp(right), dp(bottom));
+        return params;
+    }
+
+    private void showChatAppearance(boolean fromConversation) {
+        boolean returnToChat = fromConversation && activeThread != null;
+        if (returnToChat && conversationOpen) {
+            conversationOpen = false;
+            removeMessageListener();
+        }
+        customizationReturnToConversation = returnToChat;
+        chatCustomizationOpen = true;
+        privacySettingsOpen = false;
+        directMessageToggle = null;
+        LinearLayout content = createSettingsPage("Chat appearance");
+
+        TextView intro = text("Customize the look of messages across all your chats.", 13, MUTED, false);
+        content.addView(intro, pageItemParams(0, 0, 0, 4));
+        addPageSection(content, "COLOR THEME");
+        int selectedTheme = chatThemeIndex();
+        addColorChoices(content, CHAT_THEME_NAMES, CHAT_THEME_BUBBLES, selectedTheme, index -> {
+            preferences.edit().putInt("chat_theme_index", index).apply();
+            showChatAppearance(customizationReturnToConversation);
+        });
+
+        addPageSection(content, "MODE");
+        String[] modeNames = new String[]{"Dark", "Dim", "Light"};
+        addModeChoices(content, modeNames, chatMode(), index -> {
+            preferences.edit().putInt("chat_mode", index).apply();
+            showChatAppearance(customizationReturnToConversation);
+        });
+
+        addPageSection(content, "MESSAGE TEXT");
+        addAppearanceSlider(content, "Text size", 13, 23, preferences.getInt("chat_text_size", 15), "sp",
+                value -> preferences.edit().putInt("chat_text_size", value).apply());
+        addAppearanceSlider(content, "Bubble corner radius", 8, 30, preferences.getInt("chat_bubble_radius", 18), "dp",
+                value -> preferences.edit().putInt("chat_bubble_radius", value).apply());
+
+        addPageSection(content, "SENDER NAME COLOR");
+        String[] colorNames = new String[]{"Blue", "Cyan", "Violet", "Mint", "Coral", "Gold"};
+        addColorChoices(content, colorNames, NAME_COLORS, nameColorIndex(), index -> {
+            preferences.edit().putInt("chat_name_color", index).apply();
+            showChatAppearance(customizationReturnToConversation);
+        });
+
+        addPageSection(content, "CHAT WALLPAPER");
+        FrameLayout wallpaperFrame = new FrameLayout(this);
+        wallpaperFrame.setBackground(rounded(SURFACE_ALT, Color.TRANSPARENT, dp(14)));
+        wallpaperFrame.setClipToOutline(true);
+        LinearLayout.LayoutParams wallpaperParams = pageItemParams(0, 1, 0, 0);
+        wallpaperParams.height = dp(132);
+        content.addView(wallpaperFrame, wallpaperParams);
+        wallpaperPreview = new ImageView(this);
+        wallpaperPreview.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        wallpaperFrame.addView(wallpaperPreview, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        TextView wallpaperHint = text("No wallpaper selected · tap to choose", 12, MUTED, true);
+        wallpaperHint.setGravity(Gravity.CENTER);
+        wallpaperFrame.addView(wallpaperHint, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        wallpaperFrame.setOnClickListener(view -> openWallpaperPicker());
+        refreshWallpaperPreview();
+
+        LinearLayout wallpaperActions = new LinearLayout(this);
+        wallpaperActions.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams actionsParams = pageItemParams(0, 8, 0, 0);
+        content.addView(wallpaperActions, actionsParams);
+        MaterialButton chooseWallpaper = primaryButton("Choose wallpaper");
+        chooseWallpaper.setTextSize(12);
+        wallpaperActions.addView(chooseWallpaper, new LinearLayout.LayoutParams(0, dp(44), 1f));
+        chooseWallpaper.setOnClickListener(view -> openWallpaperPicker());
+        MaterialButton removeWallpaper = primaryButton("Remove");
+        removeWallpaper.setTextSize(12);
+        removeWallpaper.setBackgroundTintList(ColorStateList.valueOf(SURFACE_ALT));
+        LinearLayout.LayoutParams removeParams = new LinearLayout.LayoutParams(0, dp(44), .65f);
+        removeParams.leftMargin = dp(8);
+        wallpaperActions.addView(removeWallpaper, removeParams);
+        removeWallpaper.setOnClickListener(view -> clearChatWallpaper());
+
+        MaterialButton reset = primaryButton("Reset chat appearance");
+        reset.setBackgroundTintList(ColorStateList.valueOf(SURFACE_ALT));
+        content.addView(reset, pageItemParams(0, 24, 0, 0));
+        reset.setOnClickListener(view -> resetChatAppearance());
+    }
+
+    private void addColorChoices(LinearLayout parent, String[] labels, int[] colors, int selected, IndexListener listener) {
+        HorizontalScrollView horizontal = new HorizontalScrollView(this);
+        horizontal.setHorizontalScrollBarEnabled(false);
+        horizontal.setVerticalScrollBarEnabled(false);
+        horizontal.setFillViewport(false);
+        horizontal.setClipToPadding(false);
+        LinearLayout.LayoutParams horizontalParams = pageItemParams(0, 0, 0, 0);
+        horizontalParams.height = dp(76);
+        parent.addView(horizontal, horizontalParams);
+        LinearLayout choices = new LinearLayout(this);
+        choices.setOrientation(LinearLayout.HORIZONTAL);
+        horizontal.addView(choices, new HorizontalScrollView.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        for (int index = 0; index < labels.length; index++) {
+            final int choice = index;
+            LinearLayout option = new LinearLayout(this);
+            option.setOrientation(LinearLayout.VERTICAL);
+            option.setGravity(Gravity.CENTER_HORIZONTAL);
+            option.setPadding(dp(5), dp(3), dp(5), 0);
+            choices.addView(option, new LinearLayout.LayoutParams(dp(66), ViewGroup.LayoutParams.MATCH_PARENT));
+            TextView swatch = new TextView(this);
+            swatch.setGravity(Gravity.CENTER);
+            swatch.setBackground(circle(colors[index], index == selected ? Color.WHITE : Color.TRANSPARENT, dp(index == selected ? 2 : 0)));
+            option.addView(swatch, new LinearLayout.LayoutParams(dp(34), dp(34)));
+            TextView label = text(labels[index], 10, index == selected ? TEXT : MUTED, index == selected);
+            label.setGravity(Gravity.CENTER);
+            label.setSingleLine(true);
+            LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            labelParams.topMargin = dp(4);
+            option.addView(label, labelParams);
+            option.setBackground(rippleRounded(Color.TRANSPARENT, dp(9)));
+            option.setOnClickListener(view -> listener.onSelected(choice));
+        }
+    }
+
+    private void addModeChoices(LinearLayout parent, String[] names, int selected, IndexListener listener) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams rowParams = pageItemParams(0, 0, 0, 0);
+        rowParams.height = dp(44);
+        parent.addView(row, rowParams);
+        for (int index = 0; index < names.length; index++) {
+            final int choice = index;
+            TextView mode = text(names[index], 13, index == selected ? Color.WHITE : MUTED, index == selected);
+            mode.setGravity(Gravity.CENTER);
+            mode.setBackground(rippleRounded(index == selected ? BLUE : SURFACE_ALT, dp(14)));
+            LinearLayout.LayoutParams modeParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f);
+            if (index > 0) modeParams.leftMargin = dp(7);
+            row.addView(mode, modeParams);
+            mode.setOnClickListener(view -> listener.onSelected(choice));
+        }
+    }
+
+    private void addAppearanceSlider(LinearLayout parent, String label, int minimum, int maximum,
+                                     int current, String unit, IndexListener listener) {
+        LinearLayout block = new LinearLayout(this);
+        block.setOrientation(LinearLayout.VERTICAL);
+        block.setPadding(0, dp(4), 0, dp(8));
+        parent.addView(block, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout heading = new LinearLayout(this);
+        heading.setOrientation(LinearLayout.HORIZONTAL);
+        heading.setGravity(Gravity.CENTER_VERTICAL);
+        block.addView(heading, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        TextView title = text(label, 13, TEXT, false);
+        heading.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView valueLabel = text(current + " " + unit, 12, Color.rgb(177, 190, 255), true);
+        heading.addView(valueLabel);
+        SeekBar seekBar = new SeekBar(this);
+        seekBar.setMax(maximum - minimum);
+        seekBar.setProgress(Math.max(0, Math.min(maximum - minimum, current - minimum)));
+        seekBar.setProgressTintList(ColorStateList.valueOf(BLUE));
+        seekBar.setThumbTintList(ColorStateList.valueOf(Color.rgb(185, 197, 255)));
+        block.addView(seekBar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(35)));
+        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            private int value = current;
+            @Override
+            public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
+                value = minimum + progress;
+                valueLabel.setText(value + " " + unit);
+            }
+            @Override
+            public void onStartTrackingTouch(SeekBar bar) { }
+            @Override
+            public void onStopTrackingTouch(SeekBar bar) {
+                listener.onSelected(value);
+            }
+        });
+    }
+
+    private void openWallpaperPicker() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("image/*");
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        try {
+            wallpaperPicker.launch(intent);
+        } catch (Exception error) {
+            showToast("Could not open the image picker.");
+        }
+    }
+
+    private void onWallpaperPicked(Intent result) {
+        Uri uri = result.getData();
+        if (uri == null) return;
+        try {
+            int flags = result.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            getContentResolver().takePersistableUriPermission(uri, flags & Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        } catch (Exception ignored) {
+        }
+        loadedWallpaperUri = uri.toString();
+        preferences.edit().putString("chat_wallpaper_uri", loadedWallpaperUri).apply();
+        decodeWallpaperAsync(uri);
+    }
+
+    private void refreshWallpaperPreview() {
+        if (wallpaperPreview == null) return;
+        if (loadedWallpaperBitmap != null) {
+            wallpaperPreview.setImageBitmap(loadedWallpaperBitmap);
+            wallpaperPreview.setVisibility(View.VISIBLE);
+        } else {
+            wallpaperPreview.setImageDrawable(null);
+            wallpaperPreview.setVisibility(View.INVISIBLE);
+        }
+        View parent = (View) wallpaperPreview.getParent();
+        if (parent instanceof FrameLayout && ((FrameLayout) parent).getChildCount() > 1) {
+            ((FrameLayout) parent).getChildAt(1).setVisibility(loadedWallpaperBitmap == null ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    private void loadWallpaperFromPreferences() {
+        loadedWallpaperUri = preferences.getString("chat_wallpaper_uri", "");
+        if (loadedWallpaperUri.isEmpty()) return;
+        decodeWallpaperAsync(Uri.parse(loadedWallpaperUri));
+    }
+
+    private void decodeWallpaperAsync(Uri uri) {
+        String key = uri.toString();
+        ioExecutor.execute(() -> {
+            Bitmap bitmap = null;
+            Exception failure = null;
+            try {
+                bitmap = decodeWallpaper(uri);
+                if (bitmap == null) throw new IOException("Unsupported image.");
+            } catch (Exception error) {
+                failure = error;
+            }
+            Bitmap decoded = bitmap;
+            Exception decodeError = failure;
+            handler.post(() -> {
+                if (!key.equals(loadedWallpaperUri) || activityDestroyed) return;
+                if (decodeError != null || decoded == null) {
+                    showToast("The selected wallpaper could not be loaded.");
+                    return;
+                }
+                loadedWallpaperBitmap = decoded;
+                refreshWallpaperPreview();
+                if (conversationOpen && chatWallpaperView != null) {
+                    chatWallpaperView.setImageBitmap(decoded);
+                }
+            });
+        });
+    }
+
+    private Bitmap decodeWallpaper(Uri uri) throws IOException {
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        try (InputStream input = getContentResolver().openInputStream(uri)) {
+            if (input == null) throw new IOException("Wallpaper cannot be opened.");
+            BitmapFactory.decodeStream(input, null, bounds);
+        }
+        int sample = 1;
+        int maximum = Math.max(bounds.outWidth, bounds.outHeight);
+        while (maximum / sample > 1600) sample *= 2;
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inSampleSize = sample;
+        options.inPreferredConfig = Bitmap.Config.RGB_565;
+        try (InputStream input = getContentResolver().openInputStream(uri)) {
+            if (input == null) throw new IOException("Wallpaper cannot be opened.");
+            return BitmapFactory.decodeStream(input, null, options);
+        }
+    }
+
+    private void clearChatWallpaper() {
+        loadedWallpaperUri = "";
+        loadedWallpaperBitmap = null;
+        preferences.edit().remove("chat_wallpaper_uri").apply();
+        refreshWallpaperPreview();
+    }
+
+    private void resetChatAppearance() {
+        loadedWallpaperUri = "";
+        loadedWallpaperBitmap = null;
+        preferences.edit()
+                .remove("chat_theme_index")
+                .remove("chat_mode")
+                .remove("chat_text_size")
+                .remove("chat_bubble_radius")
+                .remove("chat_name_color")
+                .remove("chat_wallpaper_uri")
+                .apply();
+        showChatAppearance(customizationReturnToConversation);
+    }
+
+    private int chatThemeIndex() {
+        return Math.max(0, Math.min(CHAT_THEME_NAMES.length - 1, preferences.getInt("chat_theme_index", 0)));
+    }
+
+    private int chatMode() {
+        return Math.max(0, Math.min(2, preferences.getInt("chat_mode", 0)));
+    }
+
+    private int nameColorIndex() {
+        return Math.max(0, Math.min(NAME_COLORS.length - 1, preferences.getInt("chat_name_color", 0)));
+    }
+
+    private int chatBackgroundColor() {
+        int mode = chatMode();
+        if (mode == 2) return Color.rgb(235, 237, 243);
+        if (mode == 1) return Color.rgb(17, 18, 27);
+        return CHAT_THEME_BACKGROUNDS[chatThemeIndex()];
+    }
+
+    private int chatSurfaceColor() {
+        int mode = chatMode();
+        if (mode == 2) return Color.rgb(247, 248, 251);
+        if (mode == 1) return Color.rgb(25, 26, 38);
+        return SURFACE;
+    }
+
+    private int chatForegroundColor() {
+        return chatMode() == 2 ? Color.rgb(33, 36, 50) : TEXT;
+    }
+
+    private int chatSecondaryColor() {
+        return chatMode() == 2 ? Color.rgb(95, 100, 116) : MUTED;
+    }
+
+    private int chatIncomingColor() {
+        int mode = chatMode();
+        if (mode == 2) return Color.WHITE;
+        if (mode == 1) return Color.rgb(37, 39, 54);
+        return Color.rgb(43, 45, 62);
+    }
+
+    private int chatOutgoingColor() {
+        return CHAT_THEME_BUBBLES[chatThemeIndex()];
     }
 
     private void showAccountActions() {
@@ -1128,20 +1772,6 @@ public class MainActivity extends AppCompatActivity {
             dialog.dismiss();
             signOut();
         }, true);
-        showDarkSheet(dialog, sheet);
-    }
-
-    private void showCreateChatOptions() {
-        BottomSheetDialog dialog = new BottomSheetDialog(this);
-        LinearLayout sheet = createSheet("New conversation");
-        addSheetAction(sheet, R.drawable.ic_tab_chats, "New private chat", "Find someone by username", () -> {
-            dialog.dismiss();
-            showNewDirectChatSheet();
-        });
-        addSheetAction(sheet, R.drawable.ic_group, "New group", "Create a private group", () -> {
-            dialog.dismiss();
-            showNewGroupSheet();
-        });
         showDarkSheet(dialog, sheet);
     }
 
@@ -1228,6 +1858,10 @@ public class MainActivity extends AppCompatActivity {
         void onResolved(ArrayList<UserIdentity> users, String error);
     }
 
+    private interface IndexListener {
+        void onSelected(int index);
+    }
+
     private void resolveUsernames(List<String> names, int index, ArrayList<UserIdentity> found, UserResolutionCallback callback) {
         if (index >= names.size()) {
             callback.onResolved(found, null);
@@ -1246,8 +1880,14 @@ public class MainActivity extends AppCompatActivity {
                         callback.onResolved(found, "That account could not be loaded. Try again.");
                         return;
                     }
-                    found.add(new UserIdentity(uid, canonicalName));
-                    resolveUsernames(names, index + 1, found, callback);
+                    firestore.collection("users").document(uid).get()
+                            .addOnSuccessListener(profile -> {
+                                boolean allowNewChats = !profile.contains("allowDirectMessages")
+                                        || Boolean.TRUE.equals(profile.getBoolean("allowDirectMessages"));
+                                found.add(new UserIdentity(uid, canonicalName, allowNewChats));
+                                resolveUsernames(names, index + 1, found, callback);
+                            })
+                            .addOnFailureListener(error -> callback.onResolved(found, "Could not load that account's privacy settings. Try again."));
                 })
                 .addOnFailureListener(error -> callback.onResolved(found, "Could not find that username. Check your connection."));
     }
@@ -1284,6 +1924,7 @@ public class MainActivity extends AppCompatActivity {
             firestore.runTransaction(transaction -> {
                 DocumentSnapshot existing = transaction.get(chatRef);
                 if (!existing.exists()) {
+                    if (!other.allowDirectMessages) throw new IllegalStateException("direct_messages_disabled");
                     transaction.set(chatRef, data);
                 } else {
                     Object rawMembers = existing.get("members");
@@ -1297,7 +1938,12 @@ public class MainActivity extends AppCompatActivity {
                 openThread(new ChatThread(id, "direct", "", "", System.currentTimeMillis(), members, names));
             }).addOnFailureListener(failure -> {
                 button.setEnabled(true);
-                showToast("Could not start the chat. Check Firestore security rules.");
+                String message = String.valueOf(failure.getMessage());
+                if (message.contains("direct_messages_disabled")) {
+                    showToast("This user has turned off new private chat requests.");
+                } else {
+                    showToast("Could not start the chat. Check your connection and Firestore rules.");
+                }
             });
         });
     }
@@ -1459,21 +2105,26 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showConversation() {
+        int conversationBackground = chatBackgroundColor();
+        int conversationSurface = chatSurfaceColor();
+        int conversationText = chatForegroundColor();
+        int conversationMuted = chatSecondaryColor();
+        boolean lightMode = chatMode() == 2;
         root.removeAllViews();
-        root.setBackgroundColor(CHAT_BG);
+        root.setBackgroundColor(conversationBackground);
         LinearLayout screen = new LinearLayout(this);
         screen.setOrientation(LinearLayout.VERTICAL);
-        screen.setBackgroundColor(CHAT_BG);
+        screen.setBackgroundColor(conversationBackground);
         root.addView(screen, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         LinearLayout toolbar = new LinearLayout(this);
         toolbar.setOrientation(LinearLayout.HORIZONTAL);
         toolbar.setGravity(Gravity.CENTER_VERTICAL);
         toolbar.setPadding(dp(7), dp(5), dp(10), dp(5));
-        toolbar.setBackgroundColor(SURFACE);
+        toolbar.setBackgroundColor(conversationSurface);
         screen.addView(toolbar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(60)));
         ImageButton back = imageButton(R.drawable.ic_arrow_back, "Back to chats");
-        back.setColorFilter(TEXT);
+        back.setColorFilter(conversationText);
         toolbar.addView(back, new LinearLayout.LayoutParams(dp(42), dp(46)));
         back.setOnClickListener(view -> showMainTab(currentTab));
 
@@ -1490,41 +2141,72 @@ public class MainActivity extends AppCompatActivity {
         titleRow.setOrientation(LinearLayout.HORIZONTAL);
         titleRow.setGravity(Gravity.CENTER_VERTICAL);
         titleBlock.addView(titleRow);
-        TextView title = text(activeThread.displayName(currentUid()), 16, TEXT, true);
+        TextView title = text(activeThread.displayName(currentUid()), 16, conversationText, true);
         title.setSingleLine(true);
         title.setEllipsize(android.text.TextUtils.TruncateAt.END);
         titleRow.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        TextView subtitle = text(threadSubtitle(activeThread), 11, MUTED, false);
+        TextView subtitle = text(threadSubtitle(activeThread), 11, conversationMuted, false);
         LinearLayout.LayoutParams subtitleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         subtitleParams.topMargin = dp(2);
         titleBlock.addView(subtitle, subtitleParams);
         attachPressAnimation(titleBlock);
         titleBlock.setOnClickListener(view -> showThreadInfo(activeThread));
         ImageButton info = imageButton(R.drawable.ic_info, "Chat details");
-        info.setColorFilter(MUTED);
+        info.setColorFilter(conversationMuted);
         toolbar.addView(info, new LinearLayout.LayoutParams(dp(42), dp(44)));
         info.setOnClickListener(view -> showThreadInfo(activeThread));
 
         View divider = new View(this);
-        divider.setBackgroundColor(DIVIDER);
+        divider.setBackgroundColor(lightMode ? Color.rgb(218, 220, 228) : DIVIDER);
         screen.addView(divider, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)));
+
+        FrameLayout messageArea = new FrameLayout(this);
+        screen.addView(messageArea, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        chatWallpaperView = new ImageView(this);
+        chatWallpaperView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        if (loadedWallpaperBitmap != null) chatWallpaperView.setImageBitmap(loadedWallpaperBitmap);
+        chatWallpaperView.setBackgroundColor(conversationBackground);
+        messageArea.addView(chatWallpaperView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         messageList = new RecyclerView(this);
         messageList.setClipToPadding(false);
         messageList.setPadding(0, dp(9), 0, dp(9));
-        messageList.setBackgroundColor(CHAT_BG);
+        messageList.setBackgroundColor(Color.TRANSPARENT);
         messageList.setLayoutManager(new LinearLayoutManager(this));
         messageList.setItemAnimator(null);
-        messageAdapter = new MessageAdapter(this, this::openAttachment, activeThread.isGroup());
+        messageAdapter = new MessageAdapter(this, new MessageAdapter.FileClickListener() {
+            @Override
+            public void onFileClick(ChatMessage message) {
+                openAttachment(message);
+            }
+            @Override
+            public void onDownloadClick(ChatMessage message) {
+                beginSaveAttachment(message);
+            }
+            @Override
+            public void loadImagePreview(ChatMessage message, ImageView target) {
+                MainActivity.this.loadImagePreview(message, target);
+            }
+        }, activeThread.isGroup());
+        messageAdapter.setAppearance(
+                preferences.getInt("chat_text_size", 15),
+                preferences.getInt("chat_bubble_radius", 18),
+                lightMode,
+                chatIncomingColor(),
+                chatOutgoingColor(),
+                lightMode ? Color.rgb(37, 40, 54) : Color.rgb(244, 245, 250),
+                Color.WHITE,
+                lightMode ? Color.rgb(98, 101, 117) : Color.rgb(185, 190, 207),
+                NAME_COLORS[nameColorIndex()]);
         messageList.setAdapter(messageAdapter);
         messageAdapter.setMessages(messages);
-        screen.addView(messageList, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        messageArea.addView(messageList, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         if (!messages.isEmpty()) messageList.scrollToPosition(messages.size() - 1);
 
         LinearLayout composerArea = new LinearLayout(this);
         composerArea.setOrientation(LinearLayout.VERTICAL);
         composerArea.setPadding(dp(7), dp(7), dp(7), dp(6));
-        composerArea.setBackgroundColor(SURFACE);
+        composerArea.setBackgroundColor(conversationSurface);
         screen.addView(composerArea, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         LinearLayout composerRow = new LinearLayout(this);
         composerRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -1532,14 +2214,14 @@ public class MainActivity extends AppCompatActivity {
         composerArea.addView(composerRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         ImageButton attach = imageButton(R.drawable.ic_attach, "Attach file");
-        attach.setColorFilter(MUTED);
+        attach.setColorFilter(conversationMuted);
         composerRow.addView(attach, new LinearLayout.LayoutParams(dp(44), dp(46)));
         attach.setOnClickListener(view -> openFilePicker());
 
         composer = new EditText(this);
         composer.setTextSize(15);
-        composer.setTextColor(TEXT);
-        composer.setHintTextColor(MUTED);
+        composer.setTextColor(conversationText);
+        composer.setHintTextColor(conversationMuted);
         composer.setHint("Message");
         composer.setSingleLine(false);
         composer.setMinLines(1);
@@ -1548,7 +2230,7 @@ public class MainActivity extends AppCompatActivity {
         composer.setFilters(new InputFilter[]{new InputFilter.LengthFilter(4096)});
         composer.setImeOptions(EditorInfo.IME_ACTION_SEND);
         composer.setPadding(dp(14), dp(11), dp(14), dp(11));
-        composer.setBackground(rounded(SURFACE_ALT, Color.TRANSPARENT, dp(22)));
+        composer.setBackground(rounded(lightMode ? Color.rgb(231, 233, 240) : SURFACE_ALT, Color.TRANSPARENT, dp(22)));
         LinearLayout.LayoutParams composerParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         composerRow.addView(composer, composerParams);
         composer.setOnEditorActionListener((textView, actionId, event) -> {
@@ -1561,7 +2243,7 @@ public class MainActivity extends AppCompatActivity {
 
         ImageButton send = imageButton(R.drawable.ic_send, "Send message");
         send.setColorFilter(Color.WHITE);
-        send.setBackground(rippleRounded(BLUE, dp(18)));
+        send.setBackground(rippleRounded(chatOutgoingColor(), dp(18)));
         LinearLayout.LayoutParams sendParams = new LinearLayout.LayoutParams(dp(46), dp(46));
         sendParams.leftMargin = dp(7);
         composerRow.addView(send, sendParams);
@@ -1791,6 +2473,193 @@ public class MainActivity extends AppCompatActivity {
         return 0;
     }
 
+    private void beginSaveAttachment(ChatMessage message) {
+        if (message == null || message.fileUri == null || message.fileUri.isEmpty()) {
+            showToast("Attachment is unavailable.");
+            return;
+        }
+        pendingSaveMessage = message;
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType(message.mimeType == null || message.mimeType.isEmpty() ? "application/octet-stream" : message.mimeType);
+        intent.putExtra(Intent.EXTRA_TITLE, safeAttachmentName(message.fileName));
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+        try {
+            saveAttachmentPicker.launch(intent);
+        } catch (Exception error) {
+            pendingSaveMessage = null;
+            showToast("Could not open the save dialog.");
+        }
+    }
+
+    private String safeAttachmentName(String value) {
+        String name = value == null ? "" : value.trim();
+        name = name.replaceAll("[\\\\/:*?\"<>|]", "_");
+        return name.isEmpty() ? "attachment" : name;
+    }
+
+    private void saveAttachmentToUri(Uri destination) {
+        ChatMessage message = pendingSaveMessage;
+        pendingSaveMessage = null;
+        if (message == null || destination == null) return;
+        if (message.fileUri.startsWith("chatAttachments/")) {
+            File directory = new File(getCacheDir(), "attachments");
+            if (!directory.exists() && !directory.mkdirs()) {
+                showToast("Could not prepare the attachment.");
+                return;
+            }
+            File temporary = new File(directory, "save_" + UUID.randomUUID());
+            firebaseStorage.getReference().child(message.fileUri).getFile(temporary)
+                    .addOnSuccessListener(snapshot -> copyAttachmentToDestination(temporary, destination))
+                    .addOnFailureListener(error -> {
+                        temporary.delete();
+                        showToast("Could not download this attachment.");
+                    });
+        } else {
+            ioExecutor.execute(() -> {
+                try (InputStream input = openLocalAttachment(message.fileUri)) {
+                     OutputStream output = getContentResolver().openOutputStream(destination, "w");
+                     if (output == null) throw new IOException("Destination could not be opened.");
+                     try (OutputStream target = output) {
+                         copyStream(input, target);
+                     }
+                } catch (Exception error) {
+                    handler.post(() -> showToast("Could not save this attachment."));
+                    return;
+                }
+                handler.post(() -> showToast("Attachment saved."));
+            });
+        }
+    }
+
+    private void copyAttachmentToDestination(File source, Uri destination) {
+        if (activityDestroyed) {
+            source.delete();
+            return;
+        }
+        ioExecutor.execute(() -> {
+            boolean copied = false;
+            try (InputStream input = new FileInputStream(source)) {
+                OutputStream output = getContentResolver().openOutputStream(destination, "w");
+                if (output == null) throw new IOException("Destination could not be opened.");
+                try (OutputStream target = output) {
+                    copyStream(input, target);
+                }
+                copied = true;
+            } catch (Exception ignored) {
+            } finally {
+                source.delete();
+            }
+            boolean success = copied;
+            handler.post(() -> showToast(success ? "Attachment saved." : "Could not save this attachment."));
+        });
+    }
+
+    private InputStream openLocalAttachment(String value) throws IOException {
+        Uri uri = Uri.parse(value);
+        if ("file".equals(uri.getScheme())) return new FileInputStream(new File(uri.getPath()));
+        InputStream input = getContentResolver().openInputStream(uri);
+        if (input == null) throw new IOException("Attachment cannot be opened.");
+        return input;
+    }
+
+    private void copyStream(InputStream input, OutputStream output) throws IOException {
+        byte[] buffer = new byte[16 * 1024];
+        int length;
+        while ((length = input.read(buffer)) != -1) output.write(buffer, 0, length);
+        output.flush();
+    }
+
+    private void loadImagePreview(ChatMessage message, ImageView target) {
+        String key = message.fileUri;
+        if (key == null || key.isEmpty() || target == null) return;
+        target.setTag(key);
+        Bitmap cached = imagePreviewCache.get(key);
+        if (cached != null) {
+            target.clearColorFilter();
+            target.setImageBitmap(cached);
+            return;
+        }
+        if (!pendingImagePreviews.add(key)) return;
+        if (key.startsWith("chatAttachments/")) {
+            File directory = new File(getCacheDir(), "image_previews");
+            if (!directory.exists() && !directory.mkdirs()) {
+                pendingImagePreviews.remove(key);
+                return;
+            }
+            File previewFile = new File(directory, opaqueDigest(key) + "_" + UUID.randomUUID() + ".tmp");
+            firebaseStorage.getReference().child(key).getFile(previewFile)
+                    .addOnSuccessListener(snapshot -> decodePreviewFileAsync(key, previewFile, target))
+                    .addOnFailureListener(error -> {
+                        pendingImagePreviews.remove(key);
+                        previewFile.delete();
+                    });
+        } else {
+            ioExecutor.execute(() -> {
+                Bitmap bitmap = null;
+                try {
+                    bitmap = decodePreviewUri(Uri.parse(key));
+                } catch (Exception ignored) {
+                }
+                Bitmap decoded = bitmap;
+                handler.post(() -> finishImagePreview(key, decoded, target));
+            });
+        }
+    }
+
+    private void decodePreviewFileAsync(String key, File file, ImageView target) {
+        if (activityDestroyed) {
+            pendingImagePreviews.remove(key);
+            return;
+        }
+        ioExecutor.execute(() -> {
+            Bitmap bitmap = decodePreviewFile(file);
+            file.delete();
+            handler.post(() -> finishImagePreview(key, bitmap, target));
+        });
+    }
+
+    private Bitmap decodePreviewUri(Uri uri) throws IOException {
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        try (InputStream input = openLocalAttachment(uri.toString())) {
+            BitmapFactory.decodeStream(input, null, bounds);
+        }
+        BitmapFactory.Options options = previewOptions(bounds);
+        try (InputStream input = openLocalAttachment(uri.toString())) {
+            return BitmapFactory.decodeStream(input, null, options);
+        }
+    }
+
+    private Bitmap decodePreviewFile(File file) {
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(file.getAbsolutePath(), bounds);
+        return BitmapFactory.decodeFile(file.getAbsolutePath(), previewOptions(bounds));
+    }
+
+    private BitmapFactory.Options previewOptions(BitmapFactory.Options bounds) {
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inSampleSize = 1;
+        int maximum = Math.max(bounds.outWidth, bounds.outHeight);
+        while (maximum > 1200) {
+            options.inSampleSize *= 2;
+            maximum /= 2;
+        }
+        options.inPreferredConfig = Bitmap.Config.ARGB_8888;
+        return options;
+    }
+
+    private void finishImagePreview(String key, Bitmap bitmap, ImageView target) {
+        pendingImagePreviews.remove(key);
+        if (bitmap == null || activityDestroyed) return;
+        imagePreviewCache.put(key, bitmap);
+        if (target != null && key.equals(target.getTag())) {
+            target.clearColorFilter();
+            target.setImageBitmap(bitmap);
+        }
+    }
+
     private void openAttachment(ChatMessage message) {
         if (message.fileUri.isEmpty()) {
             showToast("Attachment is unavailable.");
@@ -1826,6 +2695,7 @@ public class MainActivity extends AppCompatActivity {
                     try {
                         Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", output);
                         openWithExternalApp(uri, message.mimeType, "Open attachment");
+                        handler.postDelayed(() -> output.delete(), 60L * 60L * 1000L);
                     } catch (Exception error) {
                         showToast("No app is available to open this attachment.");
                     }
@@ -1866,6 +2736,10 @@ public class MainActivity extends AppCompatActivity {
             TextView detail = text("Private chat · messages sync through Firebase", 13, MUTED, false);
             sheet.addView(detail, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         }
+        addSheetButton(sheet, "Chat appearance", () -> {
+            dialog.dismiss();
+            showChatAppearance(true);
+        }, false);
         addSheetButton(sheet, "Close", dialog::dismiss, true);
         showDarkSheet(dialog, sheet);
     }
@@ -1891,6 +2765,10 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout.LayoutParams descriptionParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         descriptionParams.topMargin = dp(13);
         profile.addView(description, descriptionParams);
+        addSheetButton(sheet, "Chat appearance", () -> {
+            dialog.dismiss();
+            showChatAppearance(true);
+        }, false);
         addSheetButton(sheet, "Close", dialog::dismiss, true);
         showDarkSheet(dialog, sheet);
     }
@@ -1918,10 +2796,31 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showDarkSheet(BottomSheetDialog dialog, View content) {
-        dialog.setContentView(content);
+        ScrollView sheetScroller = new ScrollView(this);
+        sheetScroller.setFillViewport(false);
+        sheetScroller.setVerticalScrollBarEnabled(false);
+        sheetScroller.setClipToPadding(false);
+        sheetScroller.setBackgroundColor(Color.TRANSPARENT);
+        sheetScroller.addView(content, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        dialog.setContentView(sheetScroller);
         dialog.show();
+        Window sheetWindow = dialog.getWindow();
+        if (sheetWindow != null) {
+            sheetWindow.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+            if (blockScreenshots) sheetWindow.addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+            sheetWindow.setStatusBarColor(BG);
+            sheetWindow.setNavigationBarColor(SURFACE);
+            sheetWindow.getDecorView().setSystemUiVisibility(0);
+            sheetWindow.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+            WindowManager.LayoutParams attributes = sheetWindow.getAttributes();
+            attributes.dimAmount = .48f;
+            sheetWindow.setAttributes(attributes);
+        }
         View bottom = dialog.findViewById(com.google.android.material.R.id.design_bottom_sheet);
-        if (bottom != null) bottom.setBackground(rounded(SURFACE, Color.TRANSPARENT, dp(20)));
+        if (bottom != null) {
+            bottom.setBackground(rounded(SURFACE, Color.TRANSPARENT, dp(20)));
+            bottom.setElevation(dp(12));
+        }
     }
 
     private void addSheetButton(LinearLayout sheet, String label, Runnable action, boolean primary) {
@@ -2229,9 +3128,11 @@ public class MainActivity extends AppCompatActivity {
     private static final class UserIdentity {
         final String uid;
         final String username;
-        UserIdentity(String uid, String username) {
+        final boolean allowDirectMessages;
+        UserIdentity(String uid, String username, boolean allowDirectMessages) {
             this.uid = uid;
             this.username = username;
+            this.allowDirectMessages = allowDirectMessages;
         }
     }
 }

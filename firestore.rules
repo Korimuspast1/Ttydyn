@@ -18,6 +18,11 @@ service cloud.firestore {
         && value != 'duckgomz';
     }
 
+    function canStartDirectChat(members) {
+      let otherUid = members[0] == request.auth.uid ? members[1] : members[0];
+      return get(/databases/$(database)/documents/users/$(otherUid)).data.allowDirectMessages == true;
+    }
+
     match /usernames/{usernameId} {
       allow get: if signedIn();
       allow list: if false;
@@ -35,23 +40,28 @@ service cloud.firestore {
       allow list: if false;
       allow create: if signedIn()
         && request.auth.uid == userId
-        && request.resource.data.keys().hasOnly(['uid', 'username', 'usernameLower', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['uid', 'username', 'usernameLower', 'createdAt', 'allowDirectMessages'])
         && request.resource.data.uid == userId
         && validUsername(request.resource.data.username)
         && request.resource.data.usernameLower == request.resource.data.username
-        && request.resource.data.createdAt == request.time;
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.allowDirectMessages is bool;
       allow update: if signedIn()
         && request.auth.uid == userId
-        && request.resource.data.keys().hasOnly(['uid', 'username', 'usernameLower', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['uid', 'username', 'usernameLower', 'createdAt', 'allowDirectMessages'])
         && request.resource.data.uid == resource.data.uid
         && request.resource.data.username == resource.data.username
         && request.resource.data.usernameLower == resource.data.usernameLower
-        && request.resource.data.createdAt == resource.data.createdAt;
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.allowDirectMessages is bool;
       allow delete: if false;
     }
 
     match /chats/{chatId} {
-      allow get, list: if signedIn() && request.auth.uid in resource.data.members;
+      allow get: if signedIn()
+        && (!exists(/databases/$(database)/documents/chats/$(chatId))
+          || request.auth.uid in resource.data.members);
+      allow list: if signedIn() && request.auth.uid in resource.data.members;
       allow create: if signedIn()
         && request.resource.data.keys().hasOnly([
           'type', 'title', 'members', 'memberNames', 'createdBy',
@@ -76,7 +86,8 @@ service cloud.firestore {
               && request.resource.data.title == '')
             || (request.resource.data.type == 'group'
               && request.resource.data.title.size() > 0
-              && request.resource.data.title.size() <= 64));
+              && request.resource.data.title.size() <= 64))
+        && (request.resource.data.type != 'direct' || canStartDirectChat(request.resource.data.members));
       allow update: if signedIn()
         && request.auth.uid in resource.data.members
         && request.resource.data.keys().hasOnly([
