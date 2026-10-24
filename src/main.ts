@@ -12,7 +12,15 @@ import {
   WORLD_W,
 } from './engine/types';
 import { WorldState } from './engine/world';
-import { isMobileViewportOrTouch, triggerHaptic } from './platform/mobileBridge';
+import {
+  captureWorldScreenshot,
+  initPcNativeBridge,
+  isMobileViewportOrTouch,
+  pcQuitNativeApp,
+  pcSendHeartbeat,
+  toggleDesktopFullscreen,
+  triggerHaptic,
+} from './platform/mobileBridge';
 import { WorldBoxUI } from './ui/toolbar';
 
 const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
@@ -30,24 +38,25 @@ world.onTerrainRegenerated = () => {
 };
 entities.reset();
 
-let activeTool: ToolId = 'sand';
+let activeTool: ToolId = 'infantry';
 let brushIndex = 2; // 'M' default
 let timeScale = 1;
 let touchPanMode = false;
 let batterySaver = false;
+let pcEdgeScroll = false;
 let appBackgroundPaused = false;
+let mouseInsideWindow = false;
 
 let isPainting = false;
 let isPanning = false;
-let lastMouseX = 0;
-let lastMouseY = 0;
+let lastMouseX = window.innerWidth * 0.5;
+let lastMouseY = window.innerHeight * 0.5;
 let prevPaintGx = -1;
 let prevPaintGy = -1;
 let cursorGx = WORLD_W * 0.5;
 let cursorGy = WORLD_H * 0.5;
 let cursorInBounds = false;
 
-// Multi-touch Pinch-to-Zoom + 2-Finger Pan + Deferred Stroke Start (prevents accidental tap drops during pinch!)
 interface TrackedPointer {
   x: number;
   y: number;
@@ -94,18 +103,37 @@ window.addEventListener('orientationchange', () => {
   }, 60);
 });
 
+async function triggerScreenshotAction(): Promise<void> {
+  renderer.render(
+    performance.now() / 1000,
+    cursorGx,
+    cursorGy,
+    false,
+    activeTool,
+    BRUSH_SIZES[brushIndex].radius,
+  );
+  const saved = await captureWorldScreenshot(canvas);
+  if (saved) {
+    ui.showEventToast(`📸 Снимок позиции сохранён: ${saved}`, '#99e9f2');
+  }
+}
+
+function triggerQuickLoadAction(): void {
+  physics.clearParticles();
+  const loaded = saveManager.loadLatestWorld(world, entities);
+  if (loaded) {
+    renderer.fitCameraToViewport();
+    ui.showEventToast(`📂 Развёртывание: «${loaded.name}»`, '#ffd466');
+  } else {
+    ui.showEventToast('⚠ Нет сохранённых операций — нажмите F5 для быстрого сохранения!', '#ff9c92');
+  }
+}
+
 const ui = new WorldBoxUI(uiRoot, world, sfx, {
   onSelectTool: (tool) => {
     activeTool = tool;
     physics.resetStroke();
-    if (
-      tool === 'weather_rain' ||
-      tool === 'weather_snow' ||
-      tool === 'flood' ||
-      tool === 'weather_clear'
-    ) {
-      physics.triggerWeatherOrFloodPower(tool);
-    } else if (tool === 'peace') {
+    if (tool === 'alliance') {
       entities.triggerPeacePower();
     }
   },
@@ -126,13 +154,32 @@ const ui = new WorldBoxUI(uiRoot, world, sfx, {
     renderer.camY += before.gy - after.gy;
     renderer.clampCamera();
   },
+  onJumpMinimap: (gx, gy) => {
+    renderer.moveCameraTo(gx, gy);
+    updateCursorFromScreen(lastMouseX, lastMouseY);
+  },
+  onSetEdgeScroll: (enabled) => {
+    pcEdgeScroll = enabled;
+    ui.showEventToast(
+      enabled
+        ? '🖥 Прокрутка камеры у краёв экрана включена'
+        : '🖥 Прокрутка камеры у краёв экрана выключена',
+      '#99e9f2',
+    );
+  },
+  onTakeScreenshot: () => {
+    void triggerScreenshotAction();
+  },
+  onQuickLoad: () => {
+    triggerQuickLoadAction();
+  },
   onSetBatterySaver: (enabled) => {
     batterySaver = enabled;
     renderer.lowPowerFx = enabled;
     resizeCanvas();
     ui.showEventToast(
       enabled
-        ? '🔋 Экономия заряда включена: снижено разрешение DPR и число частиц погоды'
+        ? '🔋 Экономия ресурсов включена: снижено разрешение DPR и число частиц погоды'
         : '⚡ Максимальная чёткость и частота кадров включены!',
       enabled ? '#8ce99a' : '#ffd466',
     );
@@ -150,17 +197,17 @@ const ui = new WorldBoxUI(uiRoot, world, sfx, {
     physics.clearParticles();
     world.generateRandomWorld();
     renderer.fitCameraToViewport();
-    ui.showEventToast(`🎲 Создан новый случайный мир #${world.seed % 10000}!`, '#7af48c');
+    ui.showEventToast(`🎲 Создан новый театр военных действий #${world.seed % 10000}!`, '#7af48c');
   },
   onSaveGame: (name) => {
     const saved = saveManager.saveWorld(world, entities, name);
-    ui.showEventToast(`💾 Игра сохранена: «${saved.name}»`, '#6ce2ff');
+    ui.showEventToast(`💾 Операция сохранена: «${saved.name}»`, '#6ce2ff');
   },
   onLoadGame: (slotId) => {
     physics.clearParticles();
     if (saveManager.loadWorld(slotId, world, entities)) {
       renderer.fitCameraToViewport();
-      ui.showEventToast('📂 Сохранённый мир успешно загружен!', '#ffd466');
+      ui.showEventToast('📂 Сохранённая операция успешно развёрнута!', '#ffd466');
     }
   },
   onDeleteSave: (slotId) => {
@@ -169,7 +216,7 @@ const ui = new WorldBoxUI(uiRoot, world, sfx, {
   },
   onExportSaveFile: (name) => {
     saveManager.exportToFile(world, entities, name);
-    ui.showEventToast('⬇ Сохранение мира экспортировано (.json)', '#6ce2ff');
+    ui.showEventToast('⬇ Сохранение экспортировано (.json)', '#6ce2ff');
   },
   onImportSaveFile: async (file) => {
     physics.clearParticles();
@@ -177,7 +224,7 @@ const ui = new WorldBoxUI(uiRoot, world, sfx, {
     if (res) {
       renderer.fitCameraToViewport();
       ui.refreshSavesList();
-      ui.showEventToast(`📂 Загружен мир из файла: «${res.name}»`, '#7af48c');
+      ui.showEventToast(`📂 Загружена операция из файла: «${res.name}»`, '#7af48c');
     }
   },
   getSavedWorlds: () => saveManager.listSaves(),
@@ -241,7 +288,26 @@ entities.onWorldEvent = (message, color) => {
   ui.showEventToast(message, color);
 };
 
-// Native Android Lifecycle & Hardware Back Button Hooks
+// Connect to Native PC Desktop Runtime (.exe / Linux binary) if running natively on PC!
+void initPcNativeBridge().then(async (status) => {
+  if (!status) return;
+  ui.markNativePcReady(status.platform);
+  const synced = await saveManager.syncFromPcDisk();
+  if (synced > 0) {
+    ui.refreshSavesList();
+  }
+  ui.showEventToast(
+    `🖥 Запущена ПК-версия! Сохранения: ${status.savesDir}`,
+    '#b197fc',
+  );
+  window.setInterval(() => {
+    void pcSendHeartbeat();
+  }, 2000);
+  window.addEventListener('beforeunload', () => {
+    void pcQuitNativeApp();
+  });
+});
+
 window.__wbSetPaused = (paused: boolean) => {
   appBackgroundPaused = paused;
   sfx.setSuspended(paused);
@@ -278,13 +344,20 @@ function getTwoPointers(): [TrackedPointer, TrackedPointer] | null {
 }
 
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+canvas.addEventListener('pointerenter', () => {
+  mouseInsideWindow = true;
+});
+canvas.addEventListener('pointerleave', () => {
+  mouseInsideWindow = false;
+});
 
 canvas.addEventListener('pointerdown', (e) => {
   sfx.unlock();
+  mouseInsideWindow = true;
   try {
     canvas.setPointerCapture(e.pointerId);
   } catch {
-    // Ignore on synthetic events
+    // Ignore
   }
 
   activePointers.set(e.pointerId, {
@@ -296,7 +369,6 @@ canvas.addEventListener('pointerdown', (e) => {
     pointerType: e.pointerType,
   });
 
-  // Two-finger Pinch-to-Zoom + Pan! Immediately cancel any unconfirmed single-finger stroke!
   if (activePointers.size >= 2) {
     gestureWasMultiTouch = true;
     pendingTouchStroke = false;
@@ -320,7 +392,6 @@ canvas.addEventListener('pointerdown', (e) => {
   lastMouseY = e.clientY;
   updateCursorFromScreen(e.clientX, e.clientY);
 
-  // Desktop middle/right click OR Alt+Drag OR Mobile One-Thumb Camera Mode!
   if (e.button === 1 || e.button === 2 || keysHeld.has('Alt') || touchPanMode) {
     if (e.button === 2 && cursorInBounds && !touchPanMode) {
       entities.selectUnitNear(cursorGx, cursorGy, 4.5);
@@ -333,7 +404,6 @@ canvas.addEventListener('pointerdown', (e) => {
 
   if (e.button === 0) {
     if (e.pointerType === 'touch') {
-      // Short 65ms multi-touch guard so starting a 2-finger pinch never drops an accidental Nuke/Meteor!
       pendingTouchStroke = true;
       prevPaintGx = cursorGx;
       prevPaintGy = cursorGy;
@@ -350,13 +420,13 @@ canvas.addEventListener('pointerdown', (e) => {
 });
 
 canvas.addEventListener('pointermove', (e) => {
+  mouseInsideWindow = true;
   const tracked = activePointers.get(e.pointerId);
   if (tracked) {
     tracked.x = e.clientX;
     tracked.y = e.clientY;
   }
 
-  // Handle smooth 2-finger Pinch-to-Zoom + Pan!
   if (activePointers.size >= 2) {
     const pair = getTwoPointers();
     if (pair) {
@@ -395,7 +465,6 @@ canvas.addEventListener('pointermove', (e) => {
     renderer.camY -= dy / renderer.zoom;
     renderer.clampCamera();
   } else if (pendingTouchStroke && tracked && !gestureWasMultiTouch) {
-    // Confirm single-finger paint stroke immediately once finger starts drawing cleanly!
     if (Math.hypot(e.clientX - tracked.startX, e.clientY - tracked.startY) > 6) {
       pendingTouchStroke = false;
       isPainting = true;
@@ -415,12 +484,10 @@ function finishPointer(e: PointerEvent): void {
 
   if (activePointers.size === 0) {
     if (!gestureWasMultiTouch && tracked) {
-      // Quick single-finger tap in Paint Mode that lifted before the 65ms guard -> fire clean single tap!
       if (pendingTouchStroke && cursorInBounds) {
-        triggerHaptic(activeTool === 'nuke' || activeTool === 'meteor' ? 'heavy' : 'tap');
+        triggerHaptic(activeTool === 'nuke' || activeTool === 'ballistic' || activeTool === 'grad' ? 'heavy' : 'tap');
         physics.applyBrush(activeTool, cursorGx, cursorGy, BRUSH_SIZES[brushIndex].radius, 1 / 60);
       } else if (touchPanMode && !panDragMoved && cursorInBounds) {
-        // Quick tap in Camera Mode inspects any creature under your finger!
         if (entities.selectUnitNear(cursorGx, cursorGy, 5.2)) {
           triggerHaptic('tool');
         }
@@ -451,6 +518,11 @@ canvas.addEventListener(
   'wheel',
   (e) => {
     e.preventDefault();
+    // PC Pro Shortcut: Ctrl + Wheel (or Alt + Wheel) changes Brush Size on the fly!
+    if (e.ctrlKey || e.altKey) {
+      ui.setBrushIndex(brushIndex + (e.deltaY < 0 ? 1 : -1), true);
+      return;
+    }
     const before = renderer.screenToWorld(e.clientX, e.clientY);
     const zoomFactor = e.deltaY < 0 ? 1.14 : 1 / 1.14;
     renderer.zoom *= zoomFactor;
@@ -464,7 +536,7 @@ canvas.addEventListener(
   { passive: false },
 );
 
-// Keyboard shortcuts across powers + camera + hide UI panels + unit inspect + random world
+// Full PC Keyboard Controls: Powers, Brush, Speed, Fullscreen [F11], Screenshot [F12], QuickSave [F5], QuickLoad [F9]
 window.addEventListener('keydown', (e) => {
   if (document.activeElement && document.activeElement.tagName === 'INPUT') {
     return;
@@ -472,28 +544,67 @@ window.addEventListener('keydown', (e) => {
   keysHeld.add(e.key);
   const code = e.code;
 
-  if (code === 'Digit1') ui.selectTool('sand', true);
-  else if (code === 'Digit2') ui.selectTool('water', true);
-  else if (code === 'Digit3') ui.selectTool('stone', true);
-  else if (code === 'Digit4') ui.selectTool('soil', true);
-  else if (code === 'Digit5') ui.selectTool('lava', true);
-  else if (code === 'Digit6') ui.selectTool('snow', true);
-  else if (code === 'Digit7') ui.selectTool('seeds', true);
-  else if (code === 'Digit8') ui.selectTool('humans', true);
-  else if (code === 'Digit9') ui.selectTool('fire', true);
-  else if (code === 'Digit0') ui.selectTool('acid', true);
-  else if (code === 'Minus') ui.selectTool('tnt', true);
-  else if (code === 'Equal') ui.selectTool('meteor', true);
-  else if (code === 'KeyQ') ui.selectTool('raise', true);
-  else if (code === 'KeyE') ui.selectTool('dig', true);
-  else if (code === 'KeyF') ui.selectTool('level', true);
-  else if (code === 'KeyV') ui.selectTool('wave', true);
+  if (code === 'F5') {
+    e.preventDefault();
+    sfx.playUiClick(720);
+    const saved = saveManager.saveWorld(world, entities, `Быстрое #${world.seed % 10000}`);
+    ui.refreshSavesList();
+    ui.showEventToast(`💾 Быстрое сохранение [F5]: «${saved.name}»`, '#6ce2ff');
+    return;
+  }
+  if (code === 'F9') {
+    e.preventDefault();
+    sfx.playUiClick(650);
+    triggerQuickLoadAction();
+    return;
+  }
+  if (code === 'F11') {
+    e.preventDefault();
+    sfx.playUiClick(640);
+    toggleDesktopFullscreen();
+    return;
+  }
+  if (code === 'F12') {
+    e.preventDefault();
+    sfx.playUiClick(740);
+    void triggerScreenshotAction();
+    return;
+  }
+  if (code === 'Escape') {
+    ui.closeTransientPopups();
+    return;
+  }
+
+  if (code === 'Digit1') ui.selectTool('bunker', true);
+  else if (code === 'Digit2') ui.selectTool('barracks', true);
+  else if (code === 'Digit3') ui.selectTool('depot', true);
+  else if (code === 'Digit4') ui.selectTool('hq', true);
+  else if (code === 'Digit5') ui.selectTool('pvo', true);
+  else if (code === 'Digit6') ui.selectTool('radar', true);
+  else if (code === 'Digit7') ui.selectTool('infantry', true);
+  else if (code === 'Digit8') ui.selectTool('specops', true);
+  else if (code === 'Digit9') ui.selectTool('sniper', true);
+  else if (code === 'Digit0') ui.selectTool('fpv_drone', true);
+  else if (code === 'Minus') ui.selectTool('lancet', true);
+  else if (code === 'Equal') ui.selectTool('fighter', true);
+  else if (code === 'KeyQ') ui.selectTool('trench', true);
+  else if (code === 'KeyE') ui.selectTool('berm', true);
+  else if (code === 'KeyF') ui.selectTool('fortify', true);
+  else if (code === 'KeyV') ui.selectTool('smoke', true);
+  else if (code === 'KeyL') ui.selectTool('artillery', true);
+  else if (code === 'KeyG') ui.selectTool('war', true);
+  else if (code === 'KeyP') ui.selectTool('alliance', true);
+  else if (code === 'KeyR') ui.selectTool('recon', true);
   else if (code === 'KeyI') ui.selectTool('inspect', true);
   else if (code === 'BracketLeft') ui.setBrushIndex(brushIndex - 1, true);
   else if (code === 'BracketRight') ui.setBrushIndex(brushIndex + 1, true);
   else if (code === 'Space') {
     e.preventDefault();
     ui.setTimeScale(timeScale === 0 ? 1 : 0, true);
+  } else if (code === 'Backquote') {
+    const order = [1, 2, 5, 10];
+    const next = order[(order.indexOf(timeScale) + 1) % order.length];
+    ui.setTimeScale(next, true);
   } else if (code === 'KeyH') {
     sfx.playUiClick(520);
     ui.toggleAllPanels();
@@ -505,12 +616,12 @@ window.addEventListener('keydown', (e) => {
   } else if (code === 'KeyZ') {
     sfx.playUiClick(660);
     renderer.focusOnSettlement(villageFocusIndex++);
-  } else if (code === 'KeyR') {
+  } else if (code === 'KeyN') {
     sfx.playUiClick(620);
     physics.clearParticles();
     world.generateRandomWorld();
     renderer.fitCameraToViewport();
-    ui.showEventToast(`🎲 Создан новый случайный мир #${world.seed % 10000}!`, '#7af48c');
+    ui.showEventToast(`🎲 Создан новый случайный театр военных действий #${world.seed % 10000}!`, '#7af48c');
   }
 });
 
@@ -534,7 +645,7 @@ function inspectTileAtCursor(): CursorInspection {
       inBounds: false,
       gx: 0,
       gy: 0,
-      biomeName: 'Океан',
+      biomeName: 'Водная гладь',
       settlementName: null,
       soil: 0,
       stone: 0,
@@ -569,33 +680,35 @@ function inspectTileAtCursor(): CursorInspection {
   const speed = Math.hypot(world.velX[idx], world.velY[idx]);
   const ownerSettle = entities.getSettlementById(world.territory[idx]);
 
-  let biomeName = 'Равнина';
-  if (lava > 0.03) biomeName = 'Раскалённая лава';
-  else if (world.acid[idx] > 0.02) biomeName = 'Лужа кислоты';
-  else if (world.plague[idx] > 0.05) biomeName = 'Чумные миазмы';
-  else if (world.fire[idx] > 0.05) biomeName = 'Пожар!';
-  else if (world.oil[idx] > 0.05) biomeName = 'Пятно нефти';
-  else if (world.gunpowder[idx] > 0.05) biomeName = 'Дорожка пороха';
-  else if (world.goldOre[idx] > 0.25) biomeName = 'Золотая жила!';
-  else if (world.buildings[idx] === 6) biomeName = 'Разруха (руины дома)';
-  else if (world.buildings[idx] === 7) biomeName = 'База выживших';
-  else if (world.buildings[idx] === 8) biomeName = 'Деревянный частокол';
-  else if (world.buildings[idx] === 3) biomeName = 'Каменная цитадель';
-  else if (world.buildings[idx] === 4) biomeName = 'Мельница и пшеница';
-  else if (world.buildings[idx] === 5) biomeName = 'Сторожевая башня';
-  else if (world.buildings[idx] >= 2) biomeName = 'Жилой дом';
-  else if (world.tnt[idx] > 0.04) biomeName = 'Заряд TNT';
-  else if (ice > 0.04) biomeName = 'Ледяной покров';
-  else if (water > 2.8) biomeName = 'Глубокий океан';
-  else if (water > 0.9) biomeName = speed > 0.7 ? 'Бурный поток' : 'Лагуна / Пролив';
-  else if (water > 0.03) biomeName = speed > 0.75 ? 'Речной порог' : 'Мелководье';
-  else if (world.snowCover[idx] > 0.25) biomeName = 'Снежный склон';
-  else if (glass > 0.08) biomeName = 'Плавленое стекло';
-  else if (sand > 0.12) biomeName = world.wetness[idx] > 0.4 ? 'Мокрый пляж' : 'Золотой песок';
-  else if (stone > 0.18) biomeName = totalSolid > 12.5 ? 'Снежный пик' : 'Горная скала';
-  else if (world.ash[idx] > 0.35) biomeName = 'Выжженный пепел';
-  else if (world.grass[idx] > 0.4) biomeName = totalSolid > 6.1 ? 'Лесной холм' : 'Зелёный луг';
-  else biomeName = 'Земля';
+  let biomeName = 'Открытая местность';
+  if (lava > 0.03) biomeName = '🔥 Пожарище / горение';
+  else if (world.acid[idx] > 0.02) biomeName = '☠ Зона хим. заражения';
+  else if (world.plague[idx] > 0.05) biomeName = '☠ Очаг заражения';
+  else if (world.fire[idx] > 0.05) biomeName = '🔥 Очаг возгорания!';
+  else if (world.oil[idx] > 0.05) biomeName = 'Разлив ГСМ';
+  else if (world.gunpowder[idx] > 0.05) biomeName = 'Рассыпанный порох / БК';
+  else if (world.goldOre[idx] > 0.25) biomeName = 'Месторождение (ресурсы)';
+  else if (world.buildings[idx] === 6) biomeName = '🏚 Руины объекта';
+  else if (world.buildings[idx] === 7) biomeName = '🛡 Железобетонный бункер';
+  else if (world.buildings[idx] === 8) biomeName = '🚧 Противотанковое заграждение';
+  else if (world.buildings[idx] === 9) biomeName = '📡 РЛС (радиолокационная станция)';
+  else if (world.buildings[idx] === 10) biomeName = '🚀 Шахта баллистической ракеты';
+  else if (world.buildings[idx] === 3) biomeName = '⭐ ШТАБ (командный пункт)';
+  else if (world.buildings[idx] === 4) biomeName = '📦 Склад ГСМ и боеприпасов';
+  else if (world.buildings[idx] === 5) biomeName = '🛡 Позиция ПВО (ЗРК)';
+  else if (world.buildings[idx] >= 2) biomeName = '🏢 Казарма / объект базы';
+  else if (world.tnt[idx] > 0.04) biomeName = '💥 Минное поле / заряд';
+  else if (ice > 0.04) biomeName = 'Ледяная корка';
+  else if (water > 2.8) biomeName = 'Глубоководье';
+  else if (water > 0.9) biomeName = speed > 0.7 ? 'Бурная река (водная преграда)' : 'Озеро / залив';
+  else if (water > 0.03) biomeName = speed > 0.75 ? 'Ручной брод' : 'Мелководье (проходимо)';
+  else if (world.snowCover[idx] > 0.25) biomeName = 'Заснеженный склон';
+  else if (glass > 0.08) biomeName = 'Оплавленное стекло (воронка)';
+  else if (sand > 0.12) biomeName = world.wetness[idx] > 0.4 ? 'Грязевой берег' : 'Песчаный грунт';
+  else if (stone > 0.18) biomeName = totalSolid > 12.5 ? 'Горная вершина (высота)' : 'Скальный массив';
+  else if (world.ash[idx] > 0.35) biomeName = 'Выжженная земля (после удара)';
+  else if (world.grass[idx] > 0.4) biomeName = totalSolid > 6.1 ? 'Лесистая возвышенность' : 'Зелёная равнина';
+  else biomeName = 'Грунт';
 
   return {
     inBounds: true,
@@ -636,7 +749,6 @@ function frame(now: number): void {
   lastTime = now;
   fpsSmooth = fpsSmooth * 0.92 + (1 / rawDt) * 0.08;
 
-  // Confirm held stationary touch stroke after 65ms if still only 1 finger down!
   if (pendingTouchStroke && activePointers.size === 1 && !gestureWasMultiTouch) {
     const p = activePointers.values().next().value as TrackedPointer;
     if (now - p.downAt >= 65) {
@@ -649,8 +761,9 @@ function frame(now: number): void {
     }
   }
 
-  // WASD / Arrows camera movement
-  const panSpeed = (160 / renderer.zoom) * rawDt;
+  // WASD / Arrows + Shift Sprint + Optional PC RTS Screen-Edge Panning
+  const sprintMult = keysHeld.has('Shift') ? 2.35 : 1.0;
+  const panSpeed = (180 / renderer.zoom) * sprintMult * rawDt;
   let movedCam = false;
   if (keysHeld.has('w') || keysHeld.has('W') || keysHeld.has('ц') || keysHeld.has('Ц') || keysHeld.has('ArrowUp')) {
     renderer.camY -= panSpeed;
@@ -668,6 +781,26 @@ function frame(now: number): void {
     renderer.camX += panSpeed;
     movedCam = true;
   }
+
+  if (pcEdgeScroll && mouseInsideWindow && !isPainting && !isPanning) {
+    const margin = 18;
+    const edgeSpeed = (145 / renderer.zoom) * rawDt;
+    if (lastMouseX <= margin) {
+      renderer.camX -= edgeSpeed;
+      movedCam = true;
+    } else if (lastMouseX >= window.innerWidth - margin) {
+      renderer.camX += edgeSpeed;
+      movedCam = true;
+    }
+    if (lastMouseY <= margin) {
+      renderer.camY -= edgeSpeed;
+      movedCam = true;
+    } else if (lastMouseY >= window.innerHeight - margin) {
+      renderer.camY += edgeSpeed;
+      movedCam = true;
+    }
+  }
+
   if (movedCam) {
     renderer.clampCamera();
     updateCursorFromScreen(lastMouseX, lastMouseY);
@@ -687,9 +820,8 @@ function frame(now: number): void {
     prevPaintGy = cursorGy;
   }
 
-  // Substep coalescing: caps heavy grid scans to <= 2 passes/frame even at 5x simulation speed!
   if (timeScale > 0) {
-    const maxPasses = batterySaver ? 1 : 2;
+    const maxPasses = batterySaver ? 1 : timeScale >= 10 ? 4 : 2;
     const passes = Math.min(timeScale, maxPasses);
     const stepDt = (timeScale / passes) * (1 / 60);
     for (let s = 0; s < passes; s++) {
@@ -708,6 +840,7 @@ function frame(now: number): void {
   );
 
   if (world.settings.showCrossSection && !isMobileViewportOrTouch()) {
+    renderer.renderMinimap(ui.minimapCanvas);
     renderer.renderGeoSlice(ui.geoSliceCanvas, cursorGx, cursorGy, cursorInBounds);
   }
 

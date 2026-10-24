@@ -1,4 +1,9 @@
-import { exportWorldJson } from '../platform/mobileBridge';
+import {
+  exportWorldJson,
+  pcDeleteDiskSave,
+  pcFetchDiskSaves,
+  pcWriteDiskSave,
+} from '../platform/mobileBridge';
 import { EntityManager, Settlement } from './entities';
 import { KINGDOM_PALETTES } from './models';
 import { SavedWorldSummary, WeatherType, WORLD_H, WORLD_W } from './types';
@@ -505,15 +510,54 @@ export class WorldSaveManager {
     overwriteId?: string,
   ): SavedWorldSummary {
     const payload = serializeWorldState(world, entities, name, overwriteId);
+    const serialized = JSON.stringify(payload);
     if (typeof localStorage !== 'undefined') {
-      const serialized = JSON.stringify(payload);
       localStorage.setItem(STORAGE_SLOT_PREFIX + payload.summary.id, serialized);
 
       const list = this.listSaves().filter((s) => s.id !== payload.summary.id);
       list.unshift(payload.summary);
       localStorage.setItem(STORAGE_INDEX_KEY, JSON.stringify(list));
     }
+    void pcWriteDiskSave(payload.summary.id, serialized);
     return payload.summary;
+  }
+
+  async syncFromPcDisk(): Promise<number> {
+    const rawList = await pcFetchDiskSaves();
+    if (rawList.length === 0 || typeof localStorage === 'undefined') return 0;
+
+    const indexMap = new Map<string, SavedWorldSummary>();
+    for (const existing of this.listSaves()) {
+      indexMap.set(existing.id, existing);
+    }
+
+    let imported = 0;
+    for (const raw of rawList) {
+      try {
+        const parsed = JSON.parse(raw) as SerializedWorldPayload;
+        if (parsed?.summary?.id && parsed.heightLayersB64) {
+          localStorage.setItem(STORAGE_SLOT_PREFIX + parsed.summary.id, raw);
+          indexMap.set(parsed.summary.id, parsed.summary);
+          imported++;
+        }
+      } catch {
+        // Ignore malformed files
+      }
+    }
+
+    if (imported > 0) {
+      localStorage.setItem(STORAGE_INDEX_KEY, JSON.stringify(Array.from(indexMap.values())));
+    }
+    return imported;
+  }
+
+  loadLatestWorld(world: WorldState, entities: EntityManager): SavedWorldSummary | null {
+    const saves = this.listSaves();
+    if (saves.length === 0) return null;
+    if (this.loadWorld(saves[0].id, world, entities)) {
+      return saves[0];
+    }
+    return null;
   }
 
   loadWorld(slotId: string, world: WorldState, entities: EntityManager): boolean {
@@ -534,6 +578,7 @@ export class WorldSaveManager {
     localStorage.removeItem(STORAGE_SLOT_PREFIX + slotId);
     const next = this.listSaves().filter((s) => s.id !== slotId);
     localStorage.setItem(STORAGE_INDEX_KEY, JSON.stringify(next));
+    void pcDeleteDiskSave(slotId);
   }
 
   exportToFile(world: WorldState, entities: EntityManager, name?: string): void {

@@ -6,6 +6,8 @@ const MAX_HUMANS = 1100;
 const MAX_METEORS = 32;
 const MAX_ARROWS = 260;
 const MAX_DRAGONS = 12;
+const MAX_MISSILES = 32;
+const MAX_DRONES = 64;
 
 export const ROLE_VILLAGER = 0;
 export const ROLE_KNIGHT = 1;
@@ -18,6 +20,11 @@ export const ROLE_WOLF = 6;
 export const BUILDING_RUINS = 6;
 export const BUILDING_BASE = 7;
 export const BUILDING_WALL = 8;
+export const BUILDING_RADAR = 9;
+export const BUILDING_SILO = 10;
+
+export const ROLE_TANK = 7;
+export const ROLE_APC = 8;
 
 // Individual Unit Trait Bitmask Flags!
 export const TRAIT_CANT_SWIM = 1 << 0;
@@ -76,6 +83,10 @@ export interface Settlement {
   buildings: number;
   woodStockpile: number;
   goldStockpile: number;
+  /** Кем аннексирована база (0 = свободна) — оккупированные провинции восстают! */
+  annexedBy: number;
+  /** Обратный отсчёт до восстания оккупированной базы */
+  rebelTimer: number;
 }
 
 export interface LightningFlash {
@@ -160,6 +171,32 @@ export class EntityManager {
   public dMaxHp = new Float32Array(MAX_DRAGONS);
   public dBreathTimer = new Float32Array(MAX_DRAGONS);
 
+  // Ballistic / Cruise Missiles in flight
+  public missileCount = 0;
+  public msx = new Float32Array(MAX_MISSILES);
+  public msy = new Float32Array(MAX_MISSILES);
+  public msz = new Float32Array(MAX_MISSILES);
+  public msvx = new Float32Array(MAX_MISSILES);
+  public msvy = new Float32Array(MAX_MISSILES);
+  public msvz = new Float32Array(MAX_MISSILES);
+  public mstx = new Float32Array(MAX_MISSILES);
+  public msty = new Float32Array(MAX_MISSILES);
+  public msPower = new Float32Array(MAX_MISSILES);
+  public msKind = new Uint8Array(MAX_MISSILES); // 0=ballistic 1=cruise 2=fab 3=grad
+  public msKingdom = new Uint8Array(MAX_MISSILES);
+
+  // FPV Kamikaze Drones
+  public droneCount = 0;
+  public drx = new Float32Array(MAX_DRONES);
+  public dry = new Float32Array(MAX_DRONES);
+  public drz = new Float32Array(MAX_DRONES);
+  public drvx = new Float32Array(MAX_DRONES);
+  public drvy = new Float32Array(MAX_DRONES);
+  public drTargetX = new Float32Array(MAX_DRONES);
+  public drTargetY = new Float32Array(MAX_DRONES);
+  public drLife = new Float32Array(MAX_DRONES);
+  public drKingdom = new Uint8Array(MAX_DRONES);
+
   // Visual Catastrophe FX (Sky Lightning Bolts & Atomic Mushroom Clouds)
   public lightningBolts: LightningFlash[] = [];
   public nukeClouds: NukeCloud[] = [];
@@ -168,6 +205,8 @@ export class EntityManager {
   public settlements: Settlement[] = [];
   private settlementById: (Settlement | undefined)[] = new Array(64);
   public warMatrix = new Uint8Array(36);
+  // Матрица военных союзов (альянсы): союзники воюют вместе против общих врагов!
+  public allyMatrix = new Uint8Array(36);
   public activeWarsCount = 0;
   public territoryVersion = 1;
   public onWorldEvent: ((message: string, color: string) => void) | null = null;
@@ -210,12 +249,15 @@ export class EntityManager {
     this.humanCount = 0;
     this.arrowCount = 0;
     this.dragonCount = 0;
+    this.missileCount = 0;
+    this.droneCount = 0;
     this.meteorCount = 0;
     this.lightningBolts = [];
     this.nukeClouds = [];
     this.screenShake = 0;
     this.settlements = [];
     this.warMatrix.fill(0);
+    this.allyMatrix.fill(0);
     this.activeWarsCount = 0;
     this.autoDiplomacyTimer = 18.0 + Math.random() * 8.0;
     this.nextKingdomCounter = 0;
@@ -233,9 +275,12 @@ export class EntityManager {
 
   public isKingdomsAtWar(kA: number, kB: number): boolean {
     if (kA === kB) return false;
-    // Zombies (6) & Skeletons (7) are hostile to all living kingdoms & each other!
     if (kA >= 6 || kB >= 6) return true;
     return this.warMatrix[kA * 6 + kB] === 1;
+  }
+  public isSettlementAtWar(s: Settlement): boolean {
+    for(let k=0;k<6;k++){ if(k!==s.kingdom && this.warMatrix[s.kingdom*6+k]) return true; }
+    return false;
   }
 
   public setWarState(kA: number, kB: number, atWar: boolean): void {
@@ -252,6 +297,8 @@ export class EntityManager {
     const sB = this.settlements.find((s) => s.active && s.kingdom === kB);
     if (atWar) {
       this.sfx.playWarHorn();
+      // Союзники автоматически вступают в войну!
+      this.pullAlliesIntoWar(kA, kB);
       // Mobilize militia in both kingdoms immediately!
       this.mobilizeKingdomArmy(kA);
       this.mobilizeKingdomArmy(kB);
@@ -261,6 +308,48 @@ export class EntityManager {
     } else if (this.onWorldEvent && sA && sB) {
       this.onWorldEvent(`🕊 ${sA.name} и ${sB.name} заключили МИР!`, '#8ce99a');
     }
+  }
+
+  public isAllied(kA: number, kB: number): boolean {
+    if (kA === kB) return false;
+    if (kA >= 6 || kB >= 6) return false;
+    return this.allyMatrix[kA * 6 + kB] === 1;
+  }
+
+  public setAllianceState(kA: number, kB: number, allied: boolean): void {
+    if (kA < 0 || kA >= 6 || kB < 0 || kB >= 6 || kA === kB) return;
+    const prev = this.allyMatrix[kA * 6 + kB];
+    const val = allied ? 1 : 0;
+    if (prev === val) return;
+    this.allyMatrix[kA * 6 + kB] = val;
+    this.allyMatrix[kB * 6 + kA] = val;
+    const sA = this.settlements.find((s) => s.active && s.kingdom === kA);
+    const sB = this.settlements.find((s) => s.active && s.kingdom === kB);
+    if (this.onWorldEvent && sA && sB) {
+      if (allied) {
+        this.onWorldEvent(`🤝 АЛЬЯНС: ${sA.name} и ${sB.name} подписали военный пакт!`, '#69db7c');
+      } else {
+        this.onWorldEvent(`💔 Альянс ${sA.name} и ${sB.name} распался!`, '#ffa94d');
+      }
+    }
+  }
+
+  /** Враг моего союзника — мой враг: союзники автоматически вступают в войну! */
+  private pullAlliesIntoWar(kA: number, kB: number): void {
+    for (let k = 0; k < 6; k++) {
+      if (k === kA || k === kB) continue;
+      if (this.allyMatrix[kA * 6 + k] === 1 && this.warMatrix[k * 6 + kB] === 0) {
+        this.warMatrix[k * 6 + kB] = 1;
+        this.warMatrix[kB * 6 + k] = 1;
+        this.mobilizeKingdomArmy(k);
+      }
+      if (this.allyMatrix[kB * 6 + k] === 1 && this.warMatrix[k * 6 + kA] === 0) {
+        this.warMatrix[k * 6 + kA] = 1;
+        this.warMatrix[kA * 6 + k] = 1;
+        this.mobilizeKingdomArmy(k);
+      }
+    }
+    this.recountWars();
   }
 
   public recountWars(): void {
@@ -423,6 +512,8 @@ export class EntityManager {
       buildings: 1,
       woodStockpile: 0,
       goldStockpile: 0,
+      annexedBy: 0,
+      rebelTimer: 0,
     };
     this.settlements.push(created);
     if (slotId > 0 && slotId < 64) {
@@ -836,6 +927,84 @@ export class EntityManager {
     this.sfx.playFireCrackle();
   }
 
+  public spawnBallisticMissile(targetX: number, targetY: number, sourceKingdom: number, kind: number = 0, power = 1.0): void {
+    if (this.missileCount >= MAX_MISSILES) return;
+    const i = this.missileCount++;
+    const sx = targetX + (Math.random()-0.5)*18 - 12; // launch offset
+    const sy = targetY + (Math.random()-0.5)*18 - 20;
+    const sIdx = Math.max(0, Math.min(WORLD_H-1, sy|0))*WORLD_W + Math.max(0, Math.min(WORLD_W-1, sx|0));
+    const surf = this.world.surfaceHeight(sIdx);
+    const tIdx = Math.max(0, Math.min(WORLD_H-1, targetY|0))*WORLD_W + Math.max(0, Math.min(WORLD_W-1, targetX|0));
+    const targetSurf = this.world.surfaceHeight(tIdx);
+    const flightTime = kind===0 ? 1.25 : kind===1 ? 1.8 : 0.9; // ballistic longer
+    this.msx[i]=sx; this.msy[i]=sy; this.msz[i]= kind===0 ? surf+42 : kind===1 ? surf+6 : surf+18;
+    this.msvx[i]=(targetX - sx)/flightTime;
+    this.msvy[i]=(targetY - sy)/flightTime;
+    this.msvz[i]= kind===0 ? 38 : kind===1 ? -2 : 18; // vertical component
+    // ballistic will be parabolic handled in update
+    this.mstx[i]=targetX; this.msty[i]=targetY; this.msPower[i]=power; this.msKind[i]=kind; this.msKingdom[i]=sourceKingdom;
+    this.sfx.playMissileLaunch();
+    if (this.onWorldEvent && kind===0) this.onWorldEvent('🚀 ПУСК БАЛЛИСТИЧЕСКОЙ РАКЕТЫ!', '#ff3d00');
+  }
+  public spawnFpvDrone(targetX: number, targetY: number, sourceKingdom: number): void {
+    if (this.droneCount >= MAX_DRONES) return;
+    const i = this.droneCount++;
+    // spawn 12 tiles behind target direction (random)
+    const ang = Math.random()*Math.PI*2;
+    const sx = targetX + Math.cos(ang)*14;
+    const sy = targetY + Math.sin(ang)*14;
+    const sIdx = Math.max(0, Math.min(WORLD_H-1, sy|0))*WORLD_W + Math.max(0, Math.min(WORLD_W-1, sx|0));
+    const surf = this.world.surfaceHeight(sIdx);
+    this.drx[i]=sx; this.dry[i]=sy; this.drz[i]=surf+5.5;
+    this.drvx[i]=0; this.drvy[i]=0;
+    this.drTargetX[i]=targetX; this.drTargetY[i]=targetY; this.drLife[i]=9.0; this.drKingdom[i]=sourceKingdom;
+    this.sfx.playUiClick(620);
+  }
+
+  public spawnReconUav(gx: number, gy: number): void {
+    if (this.droneCount >= MAX_DRONES) return;
+    const i = this.droneCount++;
+    const sIdx = Math.max(0, Math.min(WORLD_H - 1, gy | 0)) * WORLD_W + Math.max(0, Math.min(WORLD_W - 1, gx | 0));
+    this.drx[i] = gx;
+    this.dry[i] = gy;
+    this.drz[i] = this.world.surfaceHeight(sIdx) + 18;
+    this.drvx[i] = 0;
+    this.drvy[i] = 0;
+    this.drTargetX[i] = gx;
+    this.drTargetY[i] = gy;
+    this.drLife[i] = 26.0; // long loiter recon UAV
+    this.drKingdom[i] = 0;
+    this.sfx.playUiClick(760);
+    if (this.onWorldEvent) this.onWorldEvent('🛰 Разведчик в воздухе: вскрывает мины и позиции врага!', '#b388ff');
+  }
+
+  public spawnArtilleryShell(targetX: number, targetY: number, kind: number): void {
+    // 0 = mortar (high arc), 1 = howitzer (fast flat)
+    if (this.missileCount >= MAX_MISSILES) return;
+    const i = this.missileCount++;
+    const sx = targetX + (Math.random() - 0.5) * 26 - 4;
+    const sy = targetY + (Math.random() - 0.5) * 26 - 26;
+    const sIdx = Math.max(0, Math.min(WORLD_H - 1, sy | 0)) * WORLD_W + Math.max(0, Math.min(WORLD_W - 1, sx | 0));
+    const surf = this.world.surfaceHeight(sIdx);
+    const flightTime = kind === 0 ? 1.9 : 1.15;
+    this.msx[i] = sx;
+    this.msy[i] = sy;
+    this.msz[i] = surf + (kind === 0 ? 30 : 22);
+    this.msvx[i] = (targetX - sx) / flightTime;
+    this.msvy[i] = (targetY - sy) / flightTime;
+    this.msvz[i] = kind === 0 ? 34 : 24;
+    this.mstx[i] = targetX;
+    this.msty[i] = targetY;
+    this.msPower[i] = kind === 0 ? 0.72 : 1.05;
+    this.msKind[i] = kind === 0 ? 4 : 5; // 4 = mortar, 5 = howitzer
+    this.msKingdom[i] = 0;
+    this.sfx.playFireCrackle();
+  }
+
+  public spawnCruiseMissile(targetX: number, targetY: number, sourceKingdom: number): void {
+    this.spawnBallisticMissile(targetX, targetY, sourceKingdom, 1, 1.15);
+  }
+
   public triggerLightning(
     cx: number,
     cy: number,
@@ -1089,30 +1258,126 @@ export class EntityManager {
       if (this.nukeClouds[i].age >= this.nukeClouds[i].maxAge) this.nukeClouds.splice(i, 1);
     }
 
-    // Natural WorldBox Kingdom Diplomacy & War Outbreaks!
+    // Military diplomacy & auto missile launches!
     this.autoDiplomacyTimer -= dt;
     if (this.autoDiplomacyTimer <= 0) {
       this.autoDiplomacyTimer = 20.0 + Math.random() * 12.0;
       const grownKingdoms = Array.from(
         new Set(
           this.settlements
-            .filter((s) => s.active && (s.buildings >= 4 || s.population >= 7))
+            .filter((s) => s.active && (s.buildings >= 3 || s.population >= 5))
             .map((s) => s.kingdom),
         ),
       );
-      if (grownKingdoms.length >= 2 && this.activeWarsCount === 0) {
+      // Дипломатия: общий враг скрепляет союзы (enemy of my enemy)!
+      for (let a = 0; a < 6; a++) {
+        for (let b = a + 1; b < 6; b++) {
+          if (this.warMatrix[a * 6 + b] === 1) continue;
+          if (this.allyMatrix[a * 6 + b] === 1) continue;
+          let commonEnemy = false;
+          for (let c = 0; c < 6; c++) {
+            if (this.warMatrix[a * 6 + c] === 1 && this.warMatrix[b * 6 + c] === 1) {
+              commonEnemy = true;
+              break;
+            }
+          }
+          if (commonEnemy && Math.random() < 0.6) {
+            this.setAllianceState(a, b, true);
+          }
+        }
+      }
+
+      if (grownKingdoms.length >= 2 && this.activeWarsCount === 0 && Math.random()<0.7) {
         const idxA = (Math.random() * grownKingdoms.length) | 0;
         let idxB = (Math.random() * grownKingdoms.length) | 0;
         if (idxB === idxA) idxB = (idxA + 1) % grownKingdoms.length;
         this.setWarState(grownKingdoms[idxA], grownKingdoms[idxB], true);
       }
+
+      // Оккупированные провинции поднимают восстание и возвращают независимость!
+      for (const s of this.settlements) {
+        if (!s.active || s.annexedBy === 0) continue;
+        s.rebelTimer -= 20.0;
+        if (s.rebelTimer <= 0 && s.population >= 2) {
+          const occupier = s.annexedBy;
+          s.annexedBy = 0;
+          s.rebelTimer = 0;
+          // Восставшие возвращают себе ШТАБ и объявляют войну оккупанту
+          const capIdx = s.centerY * WORLD_W + s.centerX;
+          if (this.world.buildings[capIdx] === 3) {
+            this.world.buildingKingdom[capIdx] = s.kingdom;
+            this.world.buildingSettlement[capIdx] = s.id;
+            this.world.buildingHp[capIdx] = 300;
+          }
+          this.setWarState(s.kingdom, occupier, true);
+          if (this.onWorldEvent) {
+            this.onWorldEvent(`🔥 ВОССТАНИЕ! ${s.name} вернул себе ШТАБ и снова воюет!`, '#ff922b');
+          }
+        }
+      }
+
+      // Воюющие стороны сами наносят ракетные и дроновые удары!
+      if (this.activeWarsCount > 0) {
+        const warPairs: [number, number][] = [];
+        for (let a = 0; a < 6; a++) {
+          for (let b = a + 1; b < 6; b++) {
+            if (this.warMatrix[a * 6 + b] === 1) warPairs.push([a, b]);
+          }
+        }
+        if (warPairs.length > 0) {
+          const pair = warPairs[(Math.random() * warPairs.length) | 0];
+          const flip = Math.random() < 0.5;
+          const atkK = flip ? pair[1] : pair[0];
+          const defK = flip ? pair[0] : pair[1];
+          const attacker = this.settlements.find((s) => s.active && s.kingdom === atkK);
+          const defender = this.settlements.find((s) => s.active && s.kingdom === defK);
+
+          if (attacker && defender) {
+            // Баллистика / «Калибр» по вражеской базе
+            if (this.missileCount < 5 && Math.random() < 0.75) {
+              this.spawnBallisticMissile(
+                defender.centerX + (Math.random() - 0.5) * 6,
+                defender.centerY + (Math.random() - 0.5) * 6,
+                atkK,
+                Math.random() < 0.55 ? 0 : 1,
+                1.0 + Math.random() * 0.7,
+              );
+            }
+            // Рой FPV-камикадзе по передовой
+            if (this.droneCount < 10 && Math.random() < 0.8) {
+              const swarm = 1 + ((Math.random() * 3) | 0);
+              for (let k = 0; k < swarm; k++) {
+                this.spawnFpvDrone(
+                  defender.centerX + (Math.random() - 0.5) * 9,
+                  defender.centerY + (Math.random() - 0.5) * 9,
+                  atkK,
+                );
+              }
+            }
+            // Артиллерийский налёт
+            if (Math.random() < 0.6) {
+              const shots = 1 + ((Math.random() * 3) | 0);
+              for (let k = 0; k < shots; k++) {
+                this.spawnArtilleryShell(
+                  defender.centerX + (Math.random() - 0.5) * 12,
+                  defender.centerY + (Math.random() - 0.5) * 12,
+                  Math.random() < 0.5 ? 0 : 1,
+                );
+              }
+            }
+          }
+        }
+      }
     }
 
     this.updateMeteors(dt, emitter, partStone, partSand, partEmber, partSmoke);
+    this.updateMissiles(dt, emitter, partStone, partSand, partEmber, partSmoke);
+    this.updateDrones(dt, emitter, partStone, partSand, partEmber, partSmoke);
     this.updateDragons(dt, emitter, partEmber, partSmoke);
     this.rebuildUnitGrid();
     this.updateArrows(dt, emitter, partEmber);
     this.updateTowerDefenses(dt);
+    this.updatePvoInterceptors(dt);
     this.updateUnits(dt, emitter, partWoodChip, partLeaf, partEmber);
 
     this.territoryTick++;
@@ -1337,6 +1602,162 @@ export class EntityManager {
       write++;
     }
     this.dragonCount = write;
+  }
+
+  private updateMissiles(
+    dt: number,
+    emitter: ExplosionParticleEmitter,
+    partStone: number,
+    partSand: number,
+    partEmber: number,
+    partSmoke: number,
+  ): void {
+    let write=0;
+    for(let i=0;i<this.missileCount;i++){
+      const kind=this.msKind[i];
+      // ballistic has gravity arc, cruise low
+      if(kind===0){ this.msvz[i]-= 52*dt; } // ballistic gravity
+      else if(kind===1){ this.msvz[i]+= (2 - this.msvz[i])*2*dt; } // cruise level
+      else if(kind===4 || kind===5){ this.msvz[i]-= 32*dt; }
+      else { this.msvz[i]-= 34*dt; }
+      this.msx[i]+=this.msvx[i]*dt;
+      this.msy[i]+=this.msvy[i]*dt;
+      this.msz[i]+=this.msvz[i]*dt;
+      const gx = Math.max(0, Math.min(WORLD_W-1, this.msx[i]|0));
+      const gy = Math.max(0, Math.min(WORLD_H-1, this.msy[i]|0));
+      const surf = this.world.surfaceHeight(gy*WORLD_W+gx);
+      // smoke trail
+      if(Math.random()<0.7) emitter.emitDebris(partSmoke, this.msx[i], this.msy[i], this.msz[i], (Math.random()-0.5)*2, (Math.random()-0.5)*2, -1, 0);
+      if(kind===1){
+        // cruise terrain hugging - keep 4-6 above ground
+        const targetAlt = surf+5;
+        this.msz[i] += (targetAlt - this.msz[i])*4*dt;
+      }
+      // Check PVO intercept - will be handled in updatePvoInterceptors but also direct hit check
+      // Ground impact
+      if(this.msz[i] <= surf+0.6){
+        const power = this.msPower[i];
+        const radius = kind===0 ? 16*power : kind===1 ? 11*power : kind===2 ? 13*power : kind===4 ? 7*power : kind===5 ? 10*power : 8*power;
+        const spawnLava = kind===0;
+        this.detonateExplosion(this.msx[i], this.msy[i], radius, power*1.4, spawnLava, emitter, partStone, partSand, partEmber, partSmoke);
+        // pixel debris for buildings
+        for(let k=0;k<18;k++) emitter.emitDebris(partStone, this.msx[i]+(Math.random()-0.5)*4, this.msy[i]+(Math.random()-0.5)*4, surf+1, (Math.random()-0.5)*18, (Math.random()-0.5)*18, 14+Math.random()*12, 0.2);
+        continue;
+      }
+      // keep
+      this.msx[write]=this.msx[i]; this.msy[write]=this.msy[i]; this.msz[write]=this.msz[i];
+      this.msvx[write]=this.msvx[i]; this.msvy[write]=this.msvy[i]; this.msvz[write]=this.msvz[i];
+      this.mstx[write]=this.mstx[i]; this.msty[write]=this.msty[i]; this.msPower[write]=this.msPower[i]; this.msKind[write]=kind; this.msKingdom[write]=this.msKingdom[i];
+      write++;
+    }
+    this.missileCount=write;
+  }
+  private updateDrones(
+    dt: number,
+    emitter: ExplosionParticleEmitter,
+    partStone: number,
+    partSand: number,
+    partEmber: number,
+    partSmoke: number,
+  ): void {
+    let write=0;
+    for(let i=0;i<this.droneCount;i++){
+      this.drLife[i]-=dt;
+      if(this.drLife[i]<=0){ // self destruct
+        const gx=Math.max(0,Math.min(WORLD_W-1,this.drx[i]|0)); const gy=Math.max(0,Math.min(WORLD_H-1,this.dry[i]|0)); const surf=this.world.surfaceHeight(gy*WORLD_W+gx);
+        this.detonateExplosion(this.drx[i],this.dry[i], 4.5, 0.7, false, emitter, partStone, partSand, partEmber, partSmoke);
+        continue;
+      }
+      const tx=this.drTargetX[i], ty=this.drTargetY[i];
+      const dx=tx - this.drx[i], dy=ty - this.dry[i];
+      const dist=Math.hypot(dx,dy);
+      // homing with slight wobble
+      const targetVx = dist>0.5 ? (dx/dist)*18 : 0;
+      const targetVy = dist>0.5 ? (dy/dist)*18 : 0;
+      this.drvx[i] += (targetVx - this.drvx[i])*3.5*dt;
+      this.drvy[i] += (targetVy - this.drvy[i])*3.5*dt;
+      // add wobble for realism
+      this.drvx[i] += Math.sin(performance.now()*0.01 + i)*0.3*dt;
+      this.drx[i]+=this.drvx[i]*dt;
+      this.dry[i]+=this.drvy[i]*dt;
+      // keep altitude low over terrain
+      const gx=Math.max(0,Math.min(WORLD_W-1,this.drx[i]|0)); const gy=Math.max(0,Math.min(WORLD_H-1,this.dry[i]|0));
+      const surf=this.world.surfaceHeight(gy*WORLD_W+gx);
+      this.drz[i] += (surf+3.2 - this.drz[i])*6*dt;
+      // prop wash dust
+      if(Math.random()<0.4) emitter.emitDebris(partSmoke, this.drx[i], this.dry[i], this.drz[i]-1, (Math.random()-0.5)*3, (Math.random()-0.5)*3, 1, 0);
+      // impact check - within 1.2 of target or building hit
+      const idx = gy*WORLD_W+gx;
+      const isBuilding = this.world.buildings[idx]!==0 && this.world.buildings[idx]!==BUILDING_RUINS;
+      if(dist<1.4 || isBuilding){
+        this.detonateExplosion(this.drx[i], this.dry[i], 6.2, 0.95, false, emitter, partStone, partSand, partEmber, partSmoke);
+        // camera shake small
+        this.screenShake = Math.min(12, this.screenShake+3);
+        continue;
+      }
+      // keep
+      this.drx[write]=this.drx[i]; this.dry[write]=this.dry[i]; this.drz[write]=this.drz[i];
+      this.drvx[write]=this.drvx[i]; this.drvy[write]=this.drvy[i];
+      this.drTargetX[write]=this.drTargetX[i]; this.drTargetY[write]=this.drTargetY[i];
+      this.drLife[write]=this.drLife[i]; this.drKingdom[write]=this.drKingdom[i];
+      write++;
+    }
+    this.droneCount=write;
+  }
+  private updatePvoInterceptors(dt: number): void {
+    if(this.missileCount===0 && this.droneCount===0) return;
+    // Each PVO tower can fire every 0.9s
+    this.towerDefenseTick += dt;
+    // Reuse towerDefenseTick for PVO as well
+    // Actually we handle separate timing via arrow cooldown already - use simple scan every 0.6s
+    if(this.towerDefenseTick<0.55) return;
+    // Scan PVO buildings
+    const W=WORLD_W;
+    for(let ti=0; ti<this.towerCount; ti++){
+      const idx=this.towerIndices[ti];
+      const b=this.world.buildings[idx];
+      if(b!==5 && b!==BUILDING_SILO && b!==BUILDING_RADAR) continue; // only PVO/silo/radar intercept
+      const tk=this.world.buildingKingdom[idx];
+      const tx=(idx%W)+0.5, ty=((idx/W)|0)+0.5;
+      // check missiles
+      for(let m=0;m<this.missileCount;m++){
+        if(this.msKingdom[m]===tk) continue;
+        const ddx=this.msx[m]-tx, ddy=this.msy[m]-ty;
+        if(ddx*ddx+ddy*ddy < 28*28){
+          // fire interceptor arrow
+          const tz=this.msz[m];
+          this.fireArrow(tx,ty,this.world.surfaceHeight(idx)+4, this.msx[m], this.msy[m], tz, tk, 90);
+          // 30% chance to instantly destroy for gameplay feel (PVO effective)
+          if(Math.random()<0.18){
+            // airburst
+            this.msz[m]= this.world.surfaceHeight(((this.msy[m]|0)*W + (this.msx[m]|0)))+8; // mark for explosion next tick
+            // create intercept explosion mid-air
+            // we can just remove missile and create small airburst
+            // swap with last
+            this.missileCount--; // will be cleaned up but simple remove by swapping
+            for(let k=m;k<this.missileCount;k++){ this.msx[k]=this.msx[k+1]; this.msy[k]=this.msy[k+1]; this.msz[k]=this.msz[k+1]; this.msvx[k]=this.msvx[k+1]; this.msvy[k]=this.msvy[k+1]; this.msvz[k]=this.msvz[k+1]; this.mstx[k]=this.mstx[k+1]; this.msty[k]=this.msty[k+1]; this.msPower[k]=this.msPower[k+1]; this.msKind[k]=this.msKind[k+1]; this.msKingdom[k]=this.msKingdom[k+1];}
+            if(this.onWorldEvent && Math.random()<0.3) this.onWorldEvent(`🛡 ПВО ${this.getSettlementById(this.world.buildingSettlement[idx])?.name || ''} сбило ракету!`, '#4fc3f7');
+            this.towerDefenseTick=0;
+            return;
+          }
+        }
+      }
+      // check drones
+      for(let d=0; d<this.droneCount; d++){
+        if(this.drKingdom[d]===tk) continue;
+        const ddx=this.drx[d]-tx, ddy=this.dry[d]-ty;
+        if(ddx*ddx+ddy*ddy < 22*22){
+          this.fireArrow(tx,ty,this.world.surfaceHeight(idx)+4, this.drx[d], this.dry[d], this.drz[d], tk, 70);
+          if(Math.random()<0.22){
+            this.droneCount--;
+            for(let k=d;k<this.droneCount;k++){ this.drx[k]=this.drx[k+1]; this.dry[k]=this.dry[k+1]; this.drz[k]=this.drz[k+1]; this.drvx[k]=this.drvx[k+1]; this.drvy[k]=this.drvy[k+1]; this.drTargetX[k]=this.drTargetX[k+1]; this.drTargetY[k]=this.drTargetY[k+1]; this.drLife[k]=this.drLife[k+1]; this.drKingdom[k]=this.drKingdom[k+1];}
+            if(this.onWorldEvent && Math.random()<0.3) this.onWorldEvent(`🛡 ПВО сбило FPV-дрон!`, '#4fc3f7');
+            this.towerDefenseTick=0;
+            return;
+          }
+        }
+      }
+    }
   }
 
   private updateMeteors(
@@ -1894,7 +2315,8 @@ export class EntityManager {
           state = STATE_COMBAT;
           this.hFacing[i] = ex >= x ? 1 : -1;
           if (this.hAtkCooldown[i] <= 0) {
-            this.hAtkCooldown[i] = 0.98;
+            this.hAtkCooldown[i] = 0.55;
+            this.sfx.playGunfire();
             this.fireArrow(
               x,
               y,
@@ -2060,10 +2482,12 @@ export class EntityManager {
                 this.world.buildingSettlement[siegeIdx] = settlement.id;
                 this.world.buildingHp[siegeIdx] = 110;
                 if (enemyTown && enemyTown.centerY * W + enemyTown.centerX === siegeIdx) {
-                  enemyTown.kingdom = kingdom;
+                  // Штаб взят — база оккупирована, но гарнизон готовит восстание!
+                  enemyTown.annexedBy = kingdom;
+                  enemyTown.rebelTimer = 18.0 + Math.random() * 16.0;
                   if (this.onWorldEvent) {
                     this.onWorldEvent(
-                      `👑 ${settlement.name} ЗАХВАТИЛ столицу ${enemyTown.name}!`,
+                      `👑 ${settlement.name} ЗАХВАТИЛ ШТАБ ${enemyTown.name}! Провинция оккупирована — готовится восстание!`,
                       '#ffd43b',
                     );
                   }
@@ -2368,76 +2792,61 @@ export class EntityManager {
     }
   }
 
+  // Военные базы! Строят казармы, ПВО, радары и бункеры
   private tryConstructSettlementBuilding(s: Settlement): void {
     const W = WORLD_W;
     const capIdx = s.centerY * W + s.centerX;
+    const atWar = this.isSettlementAtWar(s);
+    const cost = atWar ? 1 : s.goldStockpile > 0 ? 2 : 3;
 
-    // Detect if Zombies exist on the map -> settlements immediately fortify with Survivor Bases & Palisades!
-    let zombieAlert = false;
-    for (let i = 0; i < this.humanCount; i++) {
-      if (this.hRole[i] === ROLE_ZOMBIE && this.hHp[i] > 0) {
-        zombieAlert = true;
-        break;
-      }
-    }
-
-    const cost = zombieAlert ? 1 : s.goldStockpile > 0 ? 2 : 3;
-
-    // If Zombies are out there and this town doesn't yet have a Fortified Survivor Base, build one NOW + Palisade Ring!
-    if (zombieAlert && this.world.buildings[capIdx] !== BUILDING_BASE && s.woodStockpile >= cost) {
+    // Штаб - сердце базы, если разрушен - строим заново
+    if (s.buildings >= 2 && (this.world.buildings[capIdx] === 1 || this.world.buildings[capIdx] === BUILDING_RUINS || this.world.buildings[capIdx]===0) && s.woodStockpile >= cost) {
       this.clearPlotForBuilding(s.centerX, s.centerY, 4);
-      this.world.buildings[capIdx] = BUILDING_BASE;
-      this.world.buildingHp[capIdx] = 420;
-      this.world.buildingSettlement[capIdx] = s.id;
-      this.world.buildingKingdom[capIdx] = s.kingdom;
-      s.woodStockpile -= cost;
-      this.buildPalisadeRing(s, 9);
-      this.mobilizeKingdomArmy(s.kingdom);
-      if (this.onWorldEvent) {
-        this.onWorldEvent(`🛡 ${s.name} возвёл Базу Выживших и частокол против зомби!`, '#ffd466');
-      }
-      this.recomputeTerritories();
-      return;
-    }
-
-    if (
-      s.buildings >= 3 &&
-      (this.world.buildings[capIdx] === 1 || this.world.buildings[capIdx] === BUILDING_RUINS) &&
-      s.woodStockpile >= cost
-    ) {
-      this.clearPlotForBuilding(s.centerX, s.centerY, 4);
-      this.world.buildings[capIdx] = 3;
-      this.world.buildingHp[capIdx] = 280;
+      this.world.buildings[capIdx] = 3; // HQ
+      this.world.buildingHp[capIdx] = 520;
       this.world.buildingSettlement[capIdx] = s.id;
       this.world.buildingKingdom[capIdx] = s.kingdom;
       s.woodStockpile -= cost;
       if (s.goldStockpile > 0) s.goldStockpile--;
+      this.buildPalisadeRing(s, 4);
+      this.recomputeTerritories();
+      return;
+    }
+    // При войне сразу укрепляем центр бункером
+    if (atWar && this.world.buildings[capIdx] !== 3 && this.world.buildings[capIdx] !== BUILDING_BASE && s.woodStockpile >= cost) {
+      this.clearPlotForBuilding(s.centerX, s.centerY, 4);
+      this.world.buildings[capIdx] = BUILDING_BASE; // concrete bunker
+      this.world.buildingHp[capIdx] = 480;
+      this.world.buildingSettlement[capIdx] = s.id;
+      this.world.buildingKingdom[capIdx] = s.kingdom;
+      s.woodStockpile -= cost;
+      this.buildPalisadeRing(s, 6);
+      if (this.onWorldEvent) this.onWorldEvent(`🛡 ${s.name} возвёл бункер!`, '#ffd466');
       this.recomputeTerritories();
       return;
     }
 
-    const maxCap = zombieAlert ? 28 : 22;
+    const maxCap = atWar ? 32 : 22;
     if (s.woodStockpile < cost || s.buildings >= maxCap) return;
     const plot = this.findGoodBuildPlot(s.centerX, s.centerY, s.id);
     if (!plot) return;
-
     const pIdx = plot.by * W + plot.bx;
     this.clearPlotForBuilding(plot.bx, plot.by, 3);
     this.layVillageRoad(s.centerX, s.centerY, plot.bx, plot.by);
 
-    let bType = 2;
-    let bHp = 110;
-    if (zombieAlert && s.buildings % 2 === 0) {
-      bType = s.buildings % 4 === 0 ? BUILDING_BASE : 5;
-      bHp = bType === BUILDING_BASE ? 380 : 210;
-      this.buildPalisadeRing(s, 4);
-    } else if (s.buildings % 4 === 2) {
-      bType = 4;
-      bHp = 120;
-      this.plantWheatAroundFarm(plot.bx, plot.by);
-    } else if (s.buildings >= 4 && s.buildings % 4 === 0) {
-      bType = 5;
-      bHp = 190;
+    let bType = 2; let bHp = 140;
+    const roll = Math.random();
+    if (atWar) {
+      if (s.buildings % 5 === 0) { bType = BUILDING_SILO; bHp = 320; } // missile silo
+      else if (s.buildings % 5 === 1) { bType = 5; bHp = 260; } // PVO
+      else if (s.buildings % 5 === 2) { bType = BUILDING_RADAR; bHp = 180; }
+      else if (s.buildings % 5 === 3) { bType = BUILDING_BASE; bHp = 380; this.buildPalisadeRing(s, 3); }
+      else { bType = 4; bHp = 160; }
+    } else {
+      if (s.buildings % 4 === 0) { bType = 2; bHp = 140; }
+      else if (s.buildings % 4 === 1) { bType = 4; bHp = 150; }
+      else if (s.buildings % 4 === 2) { bType = 5; bHp = 200; }
+      else { bType = BUILDING_RADAR; bHp = 170; }
     }
 
     this.world.buildings[pIdx] = bType;

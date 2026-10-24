@@ -187,7 +187,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  max-width: 560px;
+  max-width: 720px;
   z-index: 25;
 }
 
@@ -318,6 +318,36 @@ body {
   color: #ffffff;
 }
 
+.wb-mini-exe {
+  background: #3b245c;
+  color: #e5dbff;
+  border-color: #b197fc;
+}
+
+.wb-mini-exe:hover {
+  background: #4e317a;
+  color: #ffffff;
+}
+
+.wb-native-slot {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.wb-minimap-canvas {
+  width: 152px;
+  height: 95px;
+  border: 2px solid var(--wb-outline);
+  box-shadow: inset 0 0 0 1px #70512d;
+  image-rendering: pixelated;
+  cursor: pointer;
+}
+
+.wb-slice-subhdr {
+  margin-top: 2px;
+}
+
 .wb-mini-danger {
   background: #4a1e1c;
   color: #ffb3b0;
@@ -396,11 +426,11 @@ body {
   top: calc(10px + var(--safe-top));
   right: calc(10px + var(--safe-right));
   padding: 8px 10px;
-  width: 162px;
+  width: 176px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   z-index: 20;
 }
 
@@ -986,6 +1016,13 @@ body {
   padding: 2px 5px;
   background: #1d1510;
   border: 1px solid var(--wb-bronze);
+}
+
+/* Pure Desktop Mouse Viewports: hide mobile thumb bar so PC screen stays 100% crisp */
+@media (hover: hover) and (pointer: fine) and (min-width: 961px) and (min-height: 541px) {
+  .wb-thumb-dock {
+    display: none;
+  }
 }
 
 /* ============================================================================

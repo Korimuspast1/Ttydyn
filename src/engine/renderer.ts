@@ -1,4 +1,4 @@
-import { EntityManager } from './entities';
+import { EntityManager, ROLE_APC, ROLE_TANK } from './entities';
 import {
   drawCampfireHD,
   drawDragonHD,
@@ -29,7 +29,7 @@ import {
   PARTICLE_WOOD_CHIP,
   PhysicsEngine,
 } from './physics';
-import { CursorInspection, ToolId, WORLD_H, WORLD_SIZE, WORLD_W } from './types';
+import { BUILDING_MAX_HP, CursorInspection, ToolId, WORLD_H, WORLD_SIZE, WORLD_W } from './types';
 import { WorldState } from './world';
 
 function packColor(r: number, g: number, b: number, a = 255): number {
@@ -709,10 +709,15 @@ export class WorldRenderer {
         const sx = ox + (gx + 0.5) * zoom;
         const sy = oy + (gy + 0.82) * zoom;
 
+        // Попиксельное разрушение: спрайт буквально рассыпается на пиксели по мере урона!
+        const maxBhp = BUILDING_MAX_HP[bType] ?? 150;
+        const bhpRatio = maxBhp > 0 ? Math.max(0, Math.min(1, this.world.buildingHp[id] / maxBhp)) : 1;
+        const dmgStage = bType === 6 ? 0 : bhpRatio > 0.68 ? 0 : bhpRatio > 0.34 ? 1 : 2;
+
         if (bType === 1) {
           drawCampfireHD(ctx, sx, sy, Math.max(3.5, modelScale * 0.95), time, id);
         } else if (bType === 2) {
-          const spr = this.models.cottageSprites[kIdx];
+          const spr = this.models.getDamagedBuilding(2, kIdx, dmgStage);
           const w = modelScale * 4.35;
           const h = w * (spr.height / spr.width);
           ctx.drawImage(spr, sx - w * 0.5, sy - h * 0.85, w, h);
@@ -731,7 +736,7 @@ export class WorldRenderer {
             );
           }
         } else if (bType === 4) {
-          const spr = this.models.farmSprites[kIdx];
+          const spr = this.models.getDamagedBuilding(4, kIdx, dmgStage);
           const w = Math.round(modelScale * 5.0);
           const h = Math.round(w * (spr.height / spr.width));
           ctx.drawImage(spr, Math.round(sx - w * 0.5), Math.round(sy - h * 0.85), w, h);
@@ -740,14 +745,14 @@ export class WorldRenderer {
           const hubY = sy - h * (20 / 38);
           drawWindmillSails(ctx, hubX, hubY, w * 0.24, time * 1.35 + (id % 11));
         } else if (bType === 5) {
-          const spr = this.models.towerSprites[kIdx];
+          const spr = this.models.getDamagedBuilding(5, kIdx, dmgStage);
           const w = modelScale * 3.85;
           const h = w * (spr.height / spr.width);
           ctx.drawImage(spr, sx - w * 0.5, sy - h * 0.87, w, h);
 
           drawWavingFlag(ctx, sx, sy - h * 0.89, w * 0.34, h * 0.11, pal, time, id * 0.7);
         } else if (bType === 3) {
-          const spr = this.models.castleSprites[kIdx];
+          const spr = this.models.getDamagedBuilding(3, kIdx, dmgStage);
           const w = modelScale * 6.35;
           const h = w * (spr.height / spr.width);
           ctx.drawImage(spr, sx - w * 0.5, sy - h * 0.855, w, h);
@@ -790,15 +795,32 @@ export class WorldRenderer {
             sz,
           );
         } else if (bType === 7) {
-          // FORTIFIED HUMAN SURVIVOR BASE (БАЗА ВЫЖИВШИХ)!
-          const spr = this.models.baseSprites[kIdx];
+          // ЖЕЛЕЗОБЕТОННЫЙ БУНКЕР
+          const spr = this.models.getDamagedBuilding(7, kIdx, dmgStage);
           const w = modelScale * 6.55;
           const h = w * (spr.height / spr.width);
           ctx.drawImage(spr, sx - w * 0.5, sy - h * 0.855, w, h);
 
           drawWavingFlag(ctx, sx, sy - h * 0.9, w * 0.24, h * 0.12, pal, time, id * 0.45);
+        } else if (bType === 9) {
+          // РЛС — РАДИОЛОКАЦИОННАЯ СТАНЦИЯ
+          const spr = this.models.getDamagedBuilding(9, kIdx, dmgStage);
+          const w = modelScale * 3.6;
+          const h = w * (spr.height / spr.width);
+          ctx.drawImage(spr, sx - w * 0.5, sy - h * 0.86, w, h);
+          // Вращающаяся «мигалка» радара
+          const blip = Math.sin(time * 3.4 + id) > 0 ? '#00e676' : '#004d40';
+          ctx.fillStyle = blip;
+          const bp = Math.max(1, Math.round(w * 0.07));
+          ctx.fillRect(Math.round(sx - bp * 0.5), Math.round(sy - h * 0.98), bp, bp);
+        } else if (bType === 10) {
+          // ШАХТА БАЛЛИСТИЧЕСКОЙ РАКЕТЫ
+          const spr = this.models.getDamagedBuilding(10, kIdx, dmgStage);
+          const w = modelScale * 2.6;
+          const h = w * (spr.height / spr.width);
+          ctx.drawImage(spr, sx - w * 0.5, sy - h * 0.88, w, h);
         } else if (bType === 8) {
-          // SPIKED WOODEN PALISADE BARRICADE WALL (ЧАСТОКОЛ)!
+          // ПРОТИВОТАНКОВЫЕ ЕЖИ / ЗАГРАЖДЕНИЯ
           const spr = this.models.wallSprite;
           const w = modelScale * 2.15;
           const h = w * (spr.height / spr.width);
@@ -836,6 +858,49 @@ export class WorldRenderer {
         const groundSy = oy + vy * zoom;
         const vScale = Math.max(4.2, modelScale * 0.98);
         const maxHp = this.entities.hMaxHp[id];
+        const hpR = maxHp > 0 ? this.entities.hHp[id] / maxHp : 1;
+        const selectedUnit =
+          this.entities.hUid[id] === this.entities.selectedUnitUid && this.entities.selectedUnitUid > 0;
+        const roleNow = this.entities.hRole[id];
+
+        // ТАНКИ и БТР — отдельные пиксельные спрайты техники!
+        if (roleNow === ROLE_TANK || roleNow === ROLE_APC) {
+          const stepFrame = Math.sin(this.entities.hWalkPhase[id]) >= 0 ? 0 : 1;
+          const flip = this.entities.hFacing[id] < 0;
+          const spr =
+            roleNow === ROLE_TANK
+              ? (flip ? this.models.tankSpritesFlip : this.models.tankSprites)[stepFrame]
+              : (flip ? this.models.apcSpritesFlip : this.models.apcSprites)[stepFrame];
+          const dw = Math.max(14, Math.round(vScale * (roleNow === ROLE_TANK ? 3.4 : 3.0)));
+          const dh = Math.max(8, Math.round(dw * (spr.height / spr.width)));
+          const sy2 = groundSy - airLift;
+          const kIdx = this.entities.hKingdom[id] % KINGDOM_PALETTES.length;
+          const pal = KINGDOM_PALETTES[kIdx];
+
+          ctx.fillStyle = 'rgba(8, 12, 18, 0.38)';
+          ctx.fillRect(Math.round(groundSx - dw * 0.5), Math.round(groundSy - dh * 0.12), dw, Math.max(2, dh * 0.18));
+          ctx.drawImage(spr, Math.round(groundSx - dw * 0.5), Math.round(sy2 - dh * 0.82), dw, dh);
+
+          // Опознавательный флажок / тактический знак
+          ctx.fillStyle = pal.main;
+          ctx.fillRect(Math.round(groundSx + dw * 0.18), Math.round(sy2 - dh * 1.05), Math.max(2, dw * 0.14), Math.max(2, dh * 0.16));
+
+          if (selectedUnit) {
+            ctx.strokeStyle = '#ffe066';
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(Math.round(groundSx - dw * 0.55), Math.round(sy2 - dh * 0.88), dw * 1.1, dh * 0.95);
+          }
+          if (hpR < 0.99) {
+            const bw = Math.max(12, Math.round(vScale * 1.6));
+            const bx = Math.round(groundSx - bw * 0.5);
+            const by = Math.round(sy2 - dh - 5);
+            ctx.fillStyle = '#14181f';
+            ctx.fillRect(bx - 1, by - 1, bw + 2, 5);
+            ctx.fillStyle = hpR > 0.5 ? '#51cf66' : hpR > 0.25 ? '#ffd43b' : '#ff5252';
+            ctx.fillRect(bx, by, Math.max(1, Math.round(bw * hpR)), 3);
+          }
+          continue;
+        }
 
         drawVillagerHD(
           ctx,
@@ -857,7 +922,7 @@ export class WorldRenderer {
           this.entities.hInfected[id] > 0,
           this.entities.getUnitSizeMult(id),
           this.entities.isUnitDrowning(id),
-          this.entities.hUid[id] === this.entities.selectedUnitUid && this.entities.selectedUnitUid > 0,
+          selectedUnit,
         );
       }
     }
@@ -902,22 +967,146 @@ export class WorldRenderer {
       }
     }
 
-    // 3C. Soaring Fire Dragons!
+    // 3C. Ударные вертолёты Ка-52 (бывшие драконы)!
     for (let d = 0; d < this.entities.dragonCount; d++) {
       const groundSx = ox + this.entities.dx[d] * zoom;
       const groundSy = oy + this.entities.dy[d] * zoom;
-      const flySy = groundSy - Math.max(14, modelScale * 3.4);
-      drawDragonHD(
-        ctx,
-        groundSx,
-        flySy,
-        groundSy,
-        Math.max(12, modelScale * 2.8),
-        this.entities.dvx[d] >= 0 ? 1 : -1,
-        time,
-        this.entities.dHp[d] / Math.max(1, this.entities.dMaxHp[d]),
-        this.models.dragonSprites,
-      );
+      const hpR = this.entities.dHp[d] / Math.max(1, this.entities.dMaxHp[d]);
+      const alt = Math.max(14, modelScale * 3.4);
+      const flySy = groundSy - alt;
+      const facing = this.entities.dvx[d] >= 0 ? 1 : -1;
+
+      // Тень на земле
+      ctx.fillStyle = 'rgba(8, 12, 18, 0.26)';
+      const shW = Math.round(modelScale * 2.2);
+      ctx.fillRect(Math.round(groundSx - shW * 0.5), Math.round(groundSy - shW * 0.14), shW, Math.max(2, Math.round(shW * 0.28)));
+
+      const frame = Math.floor(time * 12) % 3;
+      const spr = this.models.helicopterSprites[frame] || this.models.dragonSprites[0];
+      const drawW = Math.max(18, Math.round(modelScale * 3.6));
+      const drawH = Math.round(drawW * (spr.height / spr.width));
+
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      ctx.translate(Math.round(groundSx), Math.round(flySy));
+      ctx.scale(facing >= 0 ? 1 : -1, 1);
+      ctx.drawImage(spr, Math.round(-drawW * 0.5), Math.round(-drawH * 0.5), drawW, drawH);
+      ctx.restore();
+
+      // НУРСы по наземным целям
+      if (Math.random() < 0.3) {
+        ctx.fillStyle = '#ff922b';
+        const rp = Math.max(1, Math.round(modelScale * 0.12));
+        for (let s = 0; s < 3; s++) {
+          ctx.fillRect(
+            Math.round(groundSx + facing * (drawW * 0.5 + s * rp * 3)),
+            Math.round(flySy + drawH * 0.3 + s * rp),
+            rp * 2,
+            rp,
+          );
+        }
+      }
+
+      if (hpR < 0.99) {
+        const bw = Math.round(modelScale * 2.2);
+        const bx = Math.round(groundSx - bw * 0.5);
+        const by = Math.round(flySy - drawH * 0.7);
+        ctx.fillStyle = '#12151c';
+        ctx.fillRect(bx - 1, by - 1, bw + 2, 6);
+        ctx.fillStyle = '#ff5252';
+        ctx.fillRect(bx, by, Math.max(2, Math.round(bw * hpR)), 4);
+      }
+    }
+
+    // 3C-2. FPV-камикадзе и барражирующие «Ланцеты»!
+    for (let dr = 0; dr < this.entities.droneCount; dr++) {
+      const gx = this.entities.drx[dr];
+      const gy = this.entities.dry[dr];
+      const z = this.entities.drz[dr];
+      const gIdx =
+        Math.max(0, Math.min(WORLD_H - 1, gy | 0)) * WORLD_W +
+        Math.max(0, Math.min(WORLD_W - 1, gx | 0));
+      const surf = this.world.surfaceHeight(gIdx);
+      const lift = Math.max(0, z - surf) * zoom * 0.55;
+      const sx = ox + gx * zoom;
+      const sy = oy + gy * zoom - lift;
+      const phase = (Math.floor(time * 30) + dr) & 1;
+      const spr = this.models.fpvDroneSprites[phase];
+      const dw = Math.max(10, Math.round(modelScale * 1.5));
+      const dh = Math.max(6, Math.round(dw * (spr.height / spr.width)));
+
+      ctx.drawImage(spr, Math.round(sx - dw * 0.5), Math.round(sy - dh * 0.5), dw, dh);
+
+      // Пунктирная линия наведения до цели (как на реальном FPV)
+      const tx = ox + this.entities.drTargetX[dr] * zoom;
+      const ty = oy + this.entities.drTargetY[dr] * zoom;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255, 61, 0, 0.35)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 4]);
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(tx, ty);
+      ctx.stroke();
+      ctx.restore();
+
+      // Прицельная рамка на цели
+      ctx.strokeStyle = 'rgba(255, 61, 0, 0.55)';
+      ctx.lineWidth = 1.5;
+      const cs = Math.max(5, zoom * 1.2);
+      ctx.strokeRect(Math.round(tx - cs * 0.5), Math.round(ty - cs * 0.5), cs, cs);
+    }
+
+    // 3C-3. Баллистические и крылатые ракеты в полёте!
+    for (let m = 0; m < this.entities.missileCount; m++) {
+      const mx = this.entities.msx[m];
+      const my = this.entities.msy[m];
+      const mz = this.entities.msz[m];
+      const gIdx =
+        Math.max(0, Math.min(WORLD_H - 1, my | 0)) * WORLD_W +
+        Math.max(0, Math.min(WORLD_W - 1, mx | 0));
+      const surf = this.world.surfaceHeight(gIdx);
+      const lift = Math.max(0, mz - surf) * zoom * 0.5;
+      const sx = ox + mx * zoom;
+      const sy = oy + my * zoom - lift;
+      const kind = this.entities.msKind[m];
+
+      // Шлейф дыма
+      ctx.fillStyle = 'rgba(160, 160, 164, 0.5)';
+      const tp = Math.max(1, Math.round(modelScale * 0.16));
+      for (let s = 1; s <= 5; s++) {
+        ctx.fillRect(
+          Math.round(sx - this.entities.msvx[m] * zoom * 0.02 * s) - tp,
+          Math.round(sy + this.entities.msvz[m] * zoom * 0.02 * s),
+          tp * 2,
+          tp,
+        );
+      }
+
+      if (kind === 1) {
+        // Крылатая ракета «Калибр» — летит низко, рисуется развёрнутым спрайтом
+        const spr = this.models.cruiseSprite;
+        const dw = Math.max(14, Math.round(modelScale * 2.1));
+        const dh = Math.max(5, Math.round(dw * (spr.height / spr.width)));
+        const dir = this.entities.msvx[m] >= 0 ? 1 : -1;
+        ctx.save();
+        ctx.imageSmoothingEnabled = false;
+        ctx.translate(Math.round(sx), Math.round(sy));
+        ctx.scale(dir, 1);
+        ctx.drawImage(spr, Math.round(-dw * 0.5), Math.round(-dh * 0.5), dw, dh);
+        ctx.restore();
+      } else {
+        // Баллистика / ФАБ / артиллерия — вертикальный корпус с огненным соплом
+        const bw = Math.max(3, Math.round(modelScale * 0.34));
+        const bh = Math.max(7, Math.round(modelScale * 1.05));
+        ctx.fillStyle = '#e0e0e0';
+        ctx.fillRect(Math.round(sx - bw * 0.5), Math.round(sy - bh * 0.5), bw, bh);
+        ctx.fillStyle = '#ff3d00';
+        ctx.fillRect(Math.round(sx - bw * 0.5), Math.round(sy - bh * 0.5), bw, Math.max(1, Math.round(bh * 0.28)));
+        ctx.fillStyle = '#fff3bf';
+        const fp = Math.max(2, Math.round(bw * 1.8));
+        ctx.fillRect(Math.round(sx - fp * 0.5), Math.round(sy + bh * 0.45), fp, Math.max(2, Math.round(bh * 0.35)));
+      }
     }
 
     // 3D. Sky Lightning Bolts!
@@ -1183,32 +1372,41 @@ export class WorldRenderer {
     const sy = oy + cursorGy * zoom;
     const rPx = Math.max(4, brushRadius * zoom);
 
+    let toolCategory = 'artillery';
+    if (activeTool === 'trench' || activeTool === 'berm' || activeTool === 'fortify' || activeTool === 'smoke') {
+      toolCategory = 'engineer';
+    } else if (
+      activeTool === 'bunker' || activeTool === 'barracks' || activeTool === 'depot' ||
+      activeTool === 'hq' || activeTool === 'pvo' || activeTool === 'radar' ||
+      activeTool === 'wall' || activeTool === 'mine'
+    ) {
+      toolCategory = 'defense';
+    } else if (
+      activeTool === 'infantry' || activeTool === 'specops' || activeTool === 'sniper' ||
+      activeTool === 'tank' || activeTool === 'apc' || activeTool === 'supply'
+    ) {
+      toolCategory = 'infantry';
+    } else if (
+      activeTool === 'fpv_drone' || activeTool === 'lancet' ||
+      activeTool === 'helicopter' || activeTool === 'fighter'
+    ) {
+      toolCategory = 'drones';
+    } else if (activeTool === 'inspect' || activeTool === 'recon' || activeTool === 'war' || activeTool === 'alliance') {
+      toolCategory = 'air';
+    }
+
     const ringColor =
-      activeTool === 'water'
-        ? '#59cbff'
-        : activeTool === 'sand' || activeTool === 'gold' || activeTool === 'blessing'
-          ? '#ffe082'
-          : activeTool === 'stone' || activeTool === 'skeletons'
-            ? '#dce3ee'
-            : activeTool === 'soil'
-              ? '#c59268'
-              : activeTool === 'lava' ||
-                  activeTool === 'fire' ||
-                  activeTool === 'meteor' ||
-                  activeTool === 'dragon' ||
-                  activeTool === 'nuke'
-                ? '#ff6e30'
-                : activeTool === 'acid' || activeTool === 'zombies'
-                  ? '#76ff40'
-                  : activeTool === 'tnt' || activeTool === 'war'
-                    ? '#ff4d4f'
-                    : activeTool === 'lightning'
-                      ? '#8ef4ff'
-                      : activeTool === 'plague'
-                        ? '#d96bff'
-                        : activeTool === 'humans' || activeTool === 'warriors'
-                          ? '#ffd566'
-                          : '#7af48c';
+      toolCategory === 'air'
+        ? '#ff3d00'
+        : toolCategory === 'engineer'
+          ? '#a1887f'
+          : toolCategory === 'defense'
+            ? '#4fc3f7'
+            : toolCategory === 'infantry'
+              ? '#7cb342'
+              : toolCategory === 'drones'
+                ? '#ff1744'
+                : '#ffe066';
 
     ctx.save();
     ctx.strokeStyle = 'rgba(0, 0, 0, 0.65)';
@@ -1341,5 +1539,56 @@ export class WorldRenderer {
 
     ctx.fillStyle = '#332924';
     ctx.fillRect(0, H - 6, W, 6);
+  }
+
+  public moveCameraTo(gx: number, gy: number): void {
+    this.camX = gx;
+    this.camY = gy;
+    this.clampCamera();
+  }
+
+  public renderMinimap(targetCanvas: HTMLCanvasElement): void {
+    const ctx = targetCanvas.getContext('2d');
+    if (!ctx) return;
+    const W = targetCanvas.width;
+    const H = targetCanvas.height;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(this.offscreenCanvas, 0, 0, W, H);
+
+    const sx = W / WORLD_W;
+    const sy = H / WORLD_H;
+
+    // Settlement capital dots
+    for (const s of this.entities.settlements) {
+      if (s.population <= 0 && s.buildings <= 0) continue;
+      const pal = KINGDOM_PALETTES[s.kingdom % KINGDOM_PALETTES.length];
+      const px = Math.round(s.centerX * sx);
+      const py = Math.round(s.centerY * sy);
+      ctx.fillStyle = '#130e0b';
+      ctx.fillRect(px - 2, py - 2, 5, 5);
+      ctx.fillStyle = pal.light;
+      ctx.fillRect(px - 1, py - 1, 3, 3);
+    }
+
+    // Dragon radar blips
+    ctx.fillStyle = '#ff4d4f';
+    for (let d = 0; d < this.entities.dragonCount; d++) {
+      ctx.fillRect(Math.round(this.entities.dx[d] * sx) - 1, Math.round(this.entities.dy[d] * sy) - 1, 3, 3);
+    }
+
+    // Current viewport rectangle
+    const halfW = this.logicalWidth * 0.5 / this.zoom;
+    const halfH = this.logicalHeight * 0.5 / this.zoom;
+    const vx = Math.max(0, Math.round((this.camX - halfW) * sx));
+    const vy = Math.max(0, Math.round((this.camY - halfH) * sy));
+    const vw = Math.min(W - vx, Math.max(4, Math.round(halfW * 2 * sx)));
+    const vh = Math.min(H - vy, Math.max(4, Math.round(halfH * 2 * sy)));
+
+    ctx.strokeStyle = '#130e0b';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(vx, vy, vw, vh);
+    ctx.strokeStyle = '#ffe066';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(vx + 0.5, vy + 0.5, Math.max(1, vw - 1), Math.max(1, vh - 1));
   }
 }
