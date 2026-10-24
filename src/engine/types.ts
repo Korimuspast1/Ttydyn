@@ -5,50 +5,51 @@ export const WORLD_SIZE = WORLD_W * WORLD_H;
 export type WeatherType = 'clear' | 'rain' | 'storm' | 'snow';
 
 export type ToolId =
-  // Landscape Sculpting / World Interaction (4)
-  | 'raise'
-  | 'dig'
-  | 'level'
-  | 'wave'
-  // Core Physical Materials & Ores (9)
-  | 'sand'
-  | 'water'
-  | 'stone'
-  | 'soil'
-  | 'lava'
-  | 'snow'
-  | 'gold'
-  | 'oil'
-  | 'gunpowder'
-  // Kingdoms, Unit Inspection, Diplomacy, Animals & Monsters (12)
+  // Инженерные войска / земляные работы (4)
+  | 'trench'
+  | 'berm'
+  | 'fortify'
+  | 'smoke'
+  // Оборонительные постройки (8)
+  | 'bunker'
+  | 'barracks'
+  | 'depot'
+  | 'hq'
+  | 'pvo'
+  | 'radar'
+  | 'wall'
+  | 'mine'
+  // Пехота и техника (6)
+  | 'infantry'
+  | 'specops'
+  | 'sniper'
+  | 'tank'
+  | 'apc'
+  | 'supply'
+  // Командование и разведка (4)
   | 'inspect'
-  | 'seeds'
-  | 'humans'
-  | 'warriors'
   | 'war'
-  | 'peace'
-  | 'blessing'
-  | 'sheep'
-  | 'wolves'
-  | 'zombies'
-  | 'skeletons'
-  | 'dragon'
-  // Divine Weather, Floods, Plagues & Catastrophes (11)
-  | 'weather_rain'
-  | 'weather_snow'
-  | 'flood'
-  | 'weather_clear'
-  | 'fire'
-  | 'lightning'
-  | 'acid'
-  | 'plague'
-  | 'tnt'
-  | 'meteor'
+  | 'alliance'
+  | 'recon'
+  // Дроны и авиация (4)
+  | 'fpv_drone'
+  | 'lancet'
+  | 'helicopter'
+  | 'fighter'
+  // Артиллерия и ракеты (9)
+  | 'mortar'
+  | 'artillery'
+  | 'grad'
+  | 'ballistic'
+  | 'cruise'
+  | 'fab'
+  | 'napalm'
+  | 'chemical'
   | 'nuke';
 
-export type PowerGroup = 'materials' | 'kingdoms' | 'chaos' | 'terraform';
+export type PowerGroup = 'engineer' | 'defense' | 'infantry' | 'command' | 'drones' | 'artillery';
 
-export type ToolbarTab = 'all' | 'elements' | 'kingdoms' | 'chaos' | 'saves' | 'physics';
+export type ToolbarTab = 'all' | 'defense' | 'offense' | 'drones' | 'missiles' | 'saves' | 'physics';
 
 export interface PowerItemDef {
   id: ToolId;
@@ -60,13 +61,13 @@ export interface PowerItemDef {
 }
 
 export interface PhysicsSettings {
-  gravityScale: number;      // 0.5 .. 2.0
-  seaLevel: number;          // 0.0 .. 10.0
-  openOceanEdges: boolean;   // Infinite WorldBox sea at edges vs closed tank walls
-  sandErosion: boolean;      // Flowing water carries loose sand downstream
-  cloudsEnabled: boolean;    // Drifting WorldBox cloud shadows
-  showCrossSection: boolean; // Live geological column readout at cursor
-  showBorders: boolean;      // WorldBox settlement borders & village banners
+  gravityScale: number;
+  seaLevel: number;
+  openOceanEdges: boolean;
+  sandErosion: boolean;
+  cloudsEnabled: boolean;
+  showCrossSection: boolean;
+  showBorders: boolean;
 }
 
 export interface TraitBadge {
@@ -128,302 +129,312 @@ export interface SavedWorldSummary {
 }
 
 export const POWER_ITEMS: PowerItemDef[] = [
-  // Group 1: Materials, Elements & Ores (9)
+  // Группа 1: Инженерные войска (4) — меняют рельеф
   {
-    id: 'sand',
-    name: 'Песок',
-    hotkey: '1',
-    group: 'materials',
-    description: 'Золотой песок: тонет в воде, намокает, образует пляжи и плавится от лавы в стекло!',
-    accentColor: '#f5d47a',
+    id: 'trench',
+    name: 'Окоп',
+    hotkey: 'Q',
+    group: 'engineer',
+    description: 'Сапёры роют глубокие окопы и противотанковые рвы! Защита от пуль и осколков.',
+    accentColor: '#8d6e63',
   },
   {
-    id: 'water',
-    name: 'Вода',
-    hotkey: '2',
-    group: 'materials',
-    description: 'Живая вода: течёт реками, тушит пожары и превращает лаву в базальт с клубами пара!',
-    accentColor: '#4cc3f7',
+    id: 'berm',
+    name: 'Бруствер',
+    hotkey: 'E',
+    group: 'engineer',
+    description: 'Насыпает земляной вал и бруствер — укрытие для пехоты и техники.',
+    accentColor: '#a1887f',
   },
   {
-    id: 'stone',
-    name: 'Камень',
-    hotkey: '3',
-    group: 'materials',
-    description: 'Тяжёлый камень: падает сквозь воду до дна и образует крутые скалы и крепостные дамбы.',
-    accentColor: '#a6b1c2',
-  },
-  {
-    id: 'soil',
-    name: 'Почва',
-    hotkey: '4',
-    group: 'materials',
-    description: 'Плодородная земля: формирует новые зелёные острова, холмы и равнины для королевств.',
-    accentColor: '#b88456',
-  },
-  {
-    id: 'lava',
-    name: 'Лава',
-    hotkey: '5',
-    group: 'materials',
-    description: 'Раскалённая магма: стекает со склонов, сжигает города, плавит песок и каменеет в воде!',
-    accentColor: '#ff6e26',
-  },
-  {
-    id: 'snow',
-    name: 'Снег / Лёд',
-    hotkey: '6',
-    group: 'materials',
-    description: 'Вечная мерзлота: сковывает моря и реки твёрдым льдом, по которому армии переходят проливы!',
-    accentColor: '#c9f2ff',
-  },
-  {
-    id: 'gold',
-    name: 'Золото',
-    hotkey: '',
-    group: 'materials',
-    description: 'Золотые жилы! Поселения добывают золото, быстрее строят замки и вооружают рыцарей.',
-    accentColor: '#ffd740',
-  },
-  {
-    id: 'oil',
-    name: 'Нефть',
-    hotkey: '',
-    group: 'materials',
-    description: 'Чёрная горючая нефть: разливается лужами и от малейшей искры вспыхивает стеной огня!',
-    accentColor: '#9e86ff',
-  },
-  {
-    id: 'gunpowder',
-    name: 'Порох',
-    hotkey: '',
-    group: 'materials',
-    description: 'Пороховая дорожка! Насыпь линию от костра до замка — огонь пробежит цепью взрывов!',
-    accentColor: '#d0d7de',
-  },
-
-  // Group 2: Kingdoms, War, Wildlife & Undead (11)
-  {
-    id: 'seeds',
-    name: 'Семена',
-    hotkey: '7',
-    group: 'kingdoms',
-    description: 'Дождь жизни: мгновенно выращивает густые леса, яблони, сосны и цветущие луга!',
-    accentColor: '#7be058',
-  },
-  {
-    id: 'humans',
-    name: 'Люди',
-    hotkey: '8',
-    group: 'kingdoms',
-    description: 'Поселенцы: рубят лес, строят деревни, мельницы и замки, снаряжают флот и армии!',
-    accentColor: '#ffbe88',
-  },
-  {
-    id: 'warriors',
-    name: 'Рыцари',
-    hotkey: '9',
-    group: 'kingdoms',
-    description: 'Элитные воины в латных шлемах с мечами и щитами! Защищают город и штурмуют врагов.',
-    accentColor: '#ffd566',
-  },
-  {
-    id: 'war',
-    name: 'Война',
-    hotkey: 'G',
-    group: 'kingdoms',
-    description: 'Шёпот войны! Заставляет выбранное королевство немедленно объявить войну соседям!',
-    accentColor: '#ff4757',
-  },
-  {
-    id: 'peace',
-    name: 'Мир',
-    hotkey: 'P',
-    group: 'kingdoms',
-    description: 'Голубь мира: прекращает все войны выбранного королевства и мирит враждующие народы.',
-    accentColor: '#a8f5ff',
-  },
-  {
-    id: 'blessing',
-    name: 'Благодать',
-    hotkey: '',
-    group: 'kingdoms',
-    description: 'Божественное благословение: исцеляет раны, лечит чуму и усиливает воинов золотым щитом!',
-    accentColor: '#fff176',
-  },
-  {
-    id: 'sheep',
-    name: 'Овечки',
-    hotkey: '',
-    group: 'kingdoms',
-    description: 'Мирные пушистые овечки: пасутся стадами на зелёных лугах вокруг деревень.',
-    accentColor: '#ffffff',
-  },
-  {
-    id: 'wolves',
-    name: 'Волки',
-    hotkey: '',
-    group: 'kingdoms',
-    description: 'Лесные хищники: сбиваются в стаи в чащах и охотятся на дичь на окраинах.',
+    id: 'fortify',
+    name: 'Бетонировать',
+    hotkey: 'F',
+    group: 'engineer',
+    description: 'Заливает бетонную площадку под базу — ровное поле для штаба и ПВО.',
     accentColor: '#b0bec5',
   },
   {
-    id: 'zombies',
-    name: 'Зомби',
-    hotkey: '',
-    group: 'kingdoms',
-    description: 'Орда зомби! Нападают на города и превращают укушенных жителей в новых зомби!',
-    accentColor: '#76ff03',
+    id: 'smoke',
+    name: 'Дымзавеса',
+    hotkey: 'V',
+    group: 'engineer',
+    description: 'Дымовые шашки и аэрозоль! Закрывает позицию от дронов и снайперов.',
+    accentColor: '#90a4ae',
+  },
+
+  // Группа 2: Оборонительные постройки (8)
+  {
+    id: 'bunker',
+    name: 'Бункер',
+    hotkey: '1',
+    group: 'defense',
+    description: 'Железобетонный бункер с амбразурами! Выдерживает миномёты, но не ФАБ.',
+    accentColor: '#78909c',
   },
   {
-    id: 'skeletons',
-    name: 'Скелеты',
-    hotkey: '',
-    group: 'kingdoms',
-    description: 'Армия скелетов с мечами! Восстают из костей и штурмуют башни и замки людей.',
-    accentColor: '#eceff1',
+    id: 'barracks',
+    name: 'Казарма',
+    hotkey: '2',
+    group: 'defense',
+    description: 'Казарма — спаунит отряды, хранит БК и ускоряет мобилизацию.',
+    accentColor: '#6d4c41',
   },
   {
-    id: 'dragon',
-    name: 'Дракон',
-    hotkey: '',
-    group: 'kingdoms',
-    description: 'Крылатый огненный дракон! Кружит в небе и выжигает города пламенем, пока лучники бьют в ответ!',
-    accentColor: '#ff5252',
+    id: 'depot',
+    name: 'Склад ГСМ',
+    hotkey: '3',
+    group: 'defense',
+    description: 'Склад топлива и БК! Авто-пополняет технику. Взорви — будет огненный шар.',
+    accentColor: '#ff8f00',
   },
+  {
+    id: 'hq',
+    name: 'ШТАБ',
+    hotkey: '4',
+    group: 'defense',
+    description: 'Командный пункт! Центр государства — захват штаба = капитуляция. Даёт радар.',
+    accentColor: '#ffd600',
+  },
+  {
+    id: 'pvo',
+    name: 'ПВО',
+    hotkey: '5',
+    group: 'defense',
+    description: 'ЗРК Панцирь! Авто-перехватывает ракеты, ФАБ и дроны в радиусе 28 клеток.',
+    accentColor: '#00bcd4',
+  },
+  {
+    id: 'radar',
+    name: 'РЛС',
+    hotkey: '6',
+    group: 'defense',
+    description: 'РЛС 59Н6 — подсвечивает все вражеские дроны и ракеты на мини-карте.',
+    accentColor: '#4fc3f7',
+  },
+  {
+    id: 'wall',
+    name: 'Ежи / Забор',
+    hotkey: '',
+    group: 'defense',
+    description: 'Противотанковые ежи и колючка! Останавливают танки и пехоту.',
+    accentColor: '#8d6e63',
+  },
+  {
+    id: 'mine',
+    name: 'Мины',
+    hotkey: '',
+    group: 'defense',
+    description: 'Минное поле TM-62! Невидимо для врага — рвёт танки и пехоту при контакте.',
+    accentColor: '#e53935',
+  },
+
+  // Группа 3: Пехота и техника (6)
+  {
+    id: 'infantry',
+    name: 'Пехота',
+    hotkey: '7',
+    group: 'infantry',
+    description: 'Мотострелки с АК! Копают, строят базы, штурмуют здания и идут в атаку.',
+    accentColor: '#7cb342',
+  },
+  {
+    id: 'specops',
+    name: 'Спецназ',
+    hotkey: '8',
+    group: 'infantry',
+    description: 'Штурмовики в броне! +60% урона, быстрее бегают, берут окопы первыми.',
+    accentColor: '#f4511e',
+  },
+  {
+    id: 'sniper',
+    name: 'Снайпер',
+    hotkey: '9',
+    group: 'infantry',
+    description: 'Снайпер с СВД! Дальний точный огонь 22 клетки, игнорит укрытия.',
+    accentColor: '#558b2f',
+  },
+  {
+    id: 'tank',
+    name: 'Танк Т-90',
+    hotkey: '',
+    group: 'infantry',
+    description: 'Тяжёлый танк! 400 HP, пушка 85 урона, давит окопы и стены, но тонет в болоте.',
+    accentColor: '#37474f',
+  },
+  {
+    id: 'apc',
+    name: 'БТР-82',
+    hotkey: '',
+    group: 'infantry',
+    description: 'Бронетранспортёр! Быстро возит пехоту, 30мм пушка, уязвим к минам.',
+    accentColor: '#607d8b',
+  },
+  {
+    id: 'supply',
+    name: 'Снабжение',
+    hotkey: '',
+    group: 'infantry',
+    description: 'Сброс ящика БК с парашютом! Лечит и пополняет всех рядом.',
+    accentColor: '#ffca28',
+  },
+
+  // Группа 4: Командование (4)
   {
     id: 'inspect',
     name: 'Осмотр',
     hotkey: 'I',
-    group: 'kingdoms',
-    description: 'Паспорт существа! Кликни по любому человеку, зомби, овечке или волку (или ПКМ!), чтобы изучить черты, возраст, урон и умение плавать!',
+    group: 'command',
+    description: 'Паспорт бойца! ПКМ по любому солдату/танку/доту — покажет HP, урон и черты.',
     accentColor: '#74c0fc',
   },
-
-  // Group 3: Divine Weather, Floods & Catastrophes (11)
   {
-    id: 'weather_rain',
-    name: 'Дождь',
+    id: 'war',
+    name: 'ВОЙНА',
+    hotkey: 'G',
+    group: 'command',
+    description: 'Приказ к атаке! Выбранная база объявляет войну всем соседям!',
+    accentColor: '#ff3d00',
+  },
+  {
+    id: 'alliance',
+    name: 'Союз',
+    hotkey: 'P',
+    group: 'command',
+    description: 'Дипломатия! Заключает мир и альянс — бывшие враги станут союзниками.',
+    accentColor: '#00e676',
+  },
+  {
+    id: 'recon',
+    name: 'Разведчик',
     hotkey: 'R',
-    group: 'chaos',
-    description: 'Долгий ливень! Льётся над всем миром, тушит пожары, наполняет реки и постепенно затапливает низины и берега!',
-    accentColor: '#4dabf7',
+    group: 'command',
+    description: 'Квадрокоптер-разведчик! Летит над картой, подсвечивает мины и врага.',
+    accentColor: '#b388ff',
   },
+
+  // Группа 5: Дроны и авиация (4)
   {
-    id: 'weather_snow',
-    name: 'Снегопад',
-    hotkey: '',
-    group: 'chaos',
-    description: 'Зимняя метель! Укрывает острова белым снегом и сковывает мелкие реки и проливы твёрдым льдом!',
-    accentColor: '#e5f6ff',
-  },
-  {
-    id: 'flood',
-    name: 'Потоп!',
-    hotkey: '',
-    group: 'chaos',
-    description: 'Великое Наводнение! Поднимает уровень мирового океана и обрушивает штормовую волну на города — неумеющие плавать тонут или бегут в горы!',
-    accentColor: '#15aabf',
-  },
-  {
-    id: 'weather_clear',
-    name: 'Солнце',
-    hotkey: '',
-    group: 'chaos',
-    description: 'Ясное небо и спад воды! Останавливает дождь и снег, высушивает лужи и возвращает океан обратно в берега!',
-    accentColor: '#ffd43b',
-  },
-  {
-    id: 'fire',
-    name: 'Огонь',
+    id: 'fpv_drone',
+    name: 'FPV-камикадзе',
     hotkey: '0',
-    group: 'chaos',
-    description: 'Живое пламя: сжигает леса, нефть и постройки, подрывает порох и динамит!',
-    accentColor: '#ff942e',
+    group: 'drones',
+    description: 'FPV-дрон с гранатой! Ты наводишь — он пикирует и сносит дом в пыль с воронкой!',
+    accentColor: '#ff1744',
   },
   {
-    id: 'lightning',
-    name: 'Молния',
-    hotkey: 'L',
-    group: 'chaos',
-    description: 'Небесная молния! Бьёт зигзагом с небес, плавит песок в стекло, поджигает лес и мечет гром!',
-    accentColor: '#82f7ff',
-  },
-  {
-    id: 'acid',
-    name: 'Кислота',
-    hotkey: '',
-    group: 'chaos',
-    description: 'Едкая кислота: с шипением растворяет камень, стены, землю и проедает кратеры!',
-    accentColor: '#7cff44',
-  },
-  {
-    id: 'plague',
-    name: 'Чума',
-    hotkey: '',
-    group: 'chaos',
-    description: 'Лиловая чума: заразный мор, перекидывающийся между жителями (лечится Благодатью!).',
-    accentColor: '#ce93d8',
-  },
-  {
-    id: 'tnt',
-    name: 'Динамит',
+    id: 'lancet',
+    name: 'Ланцет',
     hotkey: '-',
-    group: 'chaos',
-    description: 'Связки взрывчатки TNT! Детонируют от огня, молнии или взрыва соседней шашки!',
-    accentColor: '#ff4238',
+    group: 'drones',
+    description: 'Барражирующий Ланцет! Долго кружит, сам находит ПВО и танки, бьёт сверху.',
+    accentColor: '#d50000',
   },
   {
-    id: 'meteor',
-    name: 'Метеорит',
+    id: 'helicopter',
+    name: 'Ка-52',
+    hotkey: '',
+    group: 'drones',
+    description: 'Ударный вертолёт! НУРСами жжёт окопы и пехоту, уязвим к ПЗРК.',
+    accentColor: '#33691e',
+  },
+  {
+    id: 'fighter',
+    name: 'Су-34',
     hotkey: '=',
-    group: 'chaos',
-    description: 'Огненный астероид: падает из космоса, выбивая кратер с лавой, пеплом и ударной волной!',
-    accentColor: '#ff7043',
+    group: 'drones',
+    description: 'Фронтовой бомбардировщик! Сбрасывает ФАБ-500 и уходит на сверхзвуке.',
+    accentColor: '#0d47a1',
+  },
+
+  // Группа 6: Артиллерия и ракеты (9)
+  {
+    id: 'mortar',
+    name: 'Миномёт 120мм',
+    hotkey: '',
+    group: 'artillery',
+    description: 'Тихий миномёт! Навесная траектория через холмы, копает воронку 6м.',
+    accentColor: '#6d4c41',
+  },
+  {
+    id: 'artillery',
+    name: 'Гаубица 152мм',
+    hotkey: 'L',
+    group: 'artillery',
+    description: 'Дальнобойная арта! Бьёт через полкарты, ломает бункеры с 3 попаданий.',
+    accentColor: '#4e342e',
+  },
+  {
+    id: 'grad',
+    name: 'РСЗО Град',
+    hotkey: '',
+    group: 'artillery',
+    description: 'Пакет 40 ракет! Накрывает площадь 12×12 — ровняет окопы и лес.',
+    accentColor: '#ff6f00',
+  },
+  {
+    id: 'ballistic',
+    name: 'Искандер-М',
+    hotkey: '',
+    group: 'artillery',
+    description: 'Баллистика! Уходит в стратосферу и падает вертикально — воронка 18м, сносит квартал!',
+    accentColor: '#ff3d00',
+  },
+  {
+    id: 'cruise',
+    name: 'Калибр',
+    hotkey: '',
+    group: 'artillery',
+    description: 'Крылатая ракета! Летит низко над землёй, огибает горы, бьёт точно в штаб.',
+    accentColor: '#e65100',
+  },
+  {
+    id: 'fab',
+    name: 'ФАБ-1500',
+    hotkey: '',
+    group: 'artillery',
+    description: 'Планирующая бомба УМПК! Сбрасывается с Су-34, пробивает бункер и оставляет кратер.',
+    accentColor: '#bf360c',
+  },
+  {
+    id: 'napalm',
+    name: 'ТОС-1А',
+    hotkey: '',
+    group: 'artillery',
+    description: 'Огнемёт Солнцепёк! Термобарический взрыв — выжигает окопы и блиндажи.',
+    accentColor: '#ff6d00',
+  },
+  {
+    id: 'chemical',
+    name: 'Хим. удар',
+    hotkey: '',
+    group: 'artillery',
+    description: 'Зарин! Зелёное облако — медленно растворяет бетон и пехоту без противогаза.',
+    accentColor: '#76ff03',
   },
   {
     id: 'nuke',
-    name: 'Царь-Бомба',
+    name: 'Ядерка',
     hotkey: '',
-    group: 'chaos',
-    description: 'Ядерный удар! Ослепительная вспышка, гигантский ядерный гриб и исполинский кратер!',
+    group: 'artillery',
+    description: 'Тактический ядерный удар! Гриб 3км, выжженная земля, все в радиусе — в пепел.',
     accentColor: '#ffea00',
   },
-
-  // Group 4: Landscape Sculpting & Storms (4)
-  {
-    id: 'raise',
-    name: 'Поднять',
-    hotkey: 'Q',
-    group: 'terraform',
-    description: 'Выращивает горы, перешейки и новые острова прямо со дна океана.',
-    accentColor: '#8be382',
-  },
-  {
-    id: 'dig',
-    name: 'Копать',
-    hotkey: 'E',
-    group: 'terraform',
-    description: 'Прорывает судоходные проливы, крепостные рвы, реки и глубокие бухты.',
-    accentColor: '#f29f58',
-  },
-  {
-    id: 'level',
-    name: 'Ровнять',
-    hotkey: 'F',
-    group: 'terraform',
-    description: 'Выравнивает рельеф под идеальные плато для огромных столиц и замков.',
-    accentColor: '#ffd566',
-  },
-  {
-    id: 'wave',
-    name: 'Торнадо',
-    hotkey: 'V',
-    group: 'terraform',
-    description: 'Смерч и цунами: закручивает воду, песок, деревья и воинов в мощный вихрь!',
-    accentColor: '#84e8ff',
-  },
 ];
+
+// Максимальная прочность каждой военной постройки (для попиксельного разрушения)
+export const BUILDING_MAX_HP: Record<number, number> = {
+  1: 65,
+  2: 140,
+  3: 520,
+  4: 150,
+  5: 260,
+  6: 0,
+  7: 420,
+  8: 165,
+  9: 180,
+  10: 320,
+};
 
 export interface BrushSizeDef {
   id: string;

@@ -8,6 +8,14 @@ import {
   ROLE_VILLAGER,
   ROLE_WOLF,
   ROLE_ZOMBIE,
+  ROLE_TANK,
+  ROLE_APC,
+  ROLE_ARCHER,
+  BUILDING_RUINS,
+  BUILDING_BASE,
+  BUILDING_WALL,
+  BUILDING_RADAR,
+  BUILDING_SILO,
 } from './entities';
 import { ToolId, WORLD_H, WORLD_W } from './types';
 import { WorldState } from './world';
@@ -124,163 +132,109 @@ export class PhysicsEngine implements ExplosionParticleEmitter {
     const W = WORLD_W;
     const H = WORLD_H;
 
-    // 1. Direct Landscape Sculpting & Tornado Tools
-    if (tool === 'raise') {
-      this.applyRaiseTerrain(gx, gy, radius, dt);
-      return;
-    }
-    if (tool === 'dig') {
-      this.applyDig(gx, gy, radius, dt);
-      return;
-    }
-    if (tool === 'level') {
-      this.applyLevelTerrain(gx, gy, radius, dt);
-      return;
-    }
-    if (tool === 'wave') {
-      this.applyTornadoVortex(gx, gy, radius, dt);
-      return;
-    }
+    // Инженерка
+    if (tool === 'berm') { this.applyRaiseTerrain(gx, gy, radius, dt); return; }
+    if (tool === 'trench') { this.applyDig(gx, gy, radius, dt); return; }
+    if (tool === 'fortify') { this.applyLevelTerrain(gx, gy, radius, dt); return; }
+    if (tool === 'smoke') { this.applySmokeScreen(gx, gy, radius, dt); return; }
 
-    // 2. Meteors, Nuke, Lightning, Diplomacy & Living Creatures!
-    if (tool === 'meteor') {
-      if (this.meteorCooldown <= 0) {
-        const power = Math.max(0.75, Math.min(2.1, 0.65 + radius * 0.1));
-        this.entities.spawnMeteor(gx, gy, power);
-        this.meteorCooldown = 0.22;
-      }
-      return;
-    }
-
+    // Ядерка
     if (tool === 'nuke') {
       if (this.meteorCooldown <= 0) {
-        this.entities.triggerTsarBomba(
-          gx,
-          gy,
-          this,
-          PARTICLE_STONE,
-          PARTICLE_SAND,
-          PARTICLE_EMBER,
-          PARTICLE_SMOKE,
-        );
+        this.entities.triggerTsarBomba(gx, gy, this, PARTICLE_STONE, PARTICLE_SAND, PARTICLE_EMBER, PARTICLE_SMOKE);
         this.meteorCooldown = 0.75;
       }
       return;
     }
-
-    if (tool === 'lightning') {
-      if (this.meteorCooldown <= 0) {
-        this.entities.triggerLightning(gx, gy, this, PARTICLE_EMBER, PARTICLE_SMOKE);
-        this.meteorCooldown = 0.15;
-      }
-      return;
-    }
-
     if (tool === 'war') {
-      if (this.meteorCooldown <= 0) {
-        this.entities.triggerWarPower(gx, gy, radius);
-        this.meteorCooldown = 0.45;
-      }
+      if (this.meteorCooldown <= 0) { this.entities.triggerWarPower(gx, gy, radius); this.meteorCooldown = 0.45; }
       return;
     }
-
-    if (tool === 'peace') {
-      if (this.meteorCooldown <= 0) {
-        this.entities.triggerPeacePower();
-        this.meteorCooldown = 0.45;
-      }
+    if (tool === 'alliance') {
+      if (this.meteorCooldown <= 0) { this.entities.triggerPeacePower(); this.meteorCooldown = 0.45; }
       return;
     }
-
-    if (tool === 'blessing') {
+    if (tool === 'supply') {
       this.entities.triggerBlessingAt(gx, gy, radius);
-      for (let k = 0; k < 4; k++) {
-        const a = Math.random() * Math.PI * 2;
-        const r = Math.random() * radius;
-        const px = gx + Math.cos(a) * r;
-        const py = gy + Math.sin(a) * r;
-        if (px >= 1 && px < W - 1 && py >= 1 && py < H - 1) {
-          this.spawnParticle(
-            PARTICLE_EMBER,
-            px,
-            py,
-            this.world.surfaceHeight((py | 0) * W + (px | 0)) + 1.0,
-            0,
-            0,
-            9 + Math.random() * 6,
-            0,
-            0.55,
-          );
-        }
-      }
+      for (let k=0;k<4;k++){ const a=Math.random()*Math.PI*2, r=Math.random()*radius; const px=gx+Math.cos(a)*r, py=gy+Math.sin(a)*r; if(px>=1&&px<W-1&&py>=1&&py<H-1) this.spawnParticle(PARTICLE_EMBER, px, py, this.world.surfaceHeight((py|0)*W+(px|0))+1,0,0,9+Math.random()*6,0,0.55); }
       return;
     }
-
     if (tool === 'inspect') {
+      if (this.meteorCooldown <= 0) { this.entities.selectUnitNear(gx, gy, 4.5); this.meteorCooldown = 0.2; }
+      return;
+    }
+    if (tool === 'recon') {
+      if (this.meteorCooldown <= 0) { this.entities.spawnReconUav(gx,gy); this.meteorCooldown=0.4; }
+      return;
+    }
+    if (tool === 'helicopter') {
+      if (this.meteorCooldown <= 0) { this.entities.spawnDragon(gx, gy); this.meteorCooldown = 0.55; }
+      return;
+    }
+    // Дроны
+    if (tool === 'fpv_drone') {
       if (this.meteorCooldown <= 0) {
-        this.entities.selectUnitNear(gx, gy, 4.5);
-        this.meteorCooldown = 0.2;
+        const cnt = radius<=3?1: radius<=6?2:3;
+        for(let k=0;k<cnt;k++){ this.entities.spawnFpvDrone(gx+(Math.random()-0.5)*radius, gy+(Math.random()-0.5)*radius, 0); }
+        this.meteorCooldown=0.3;
       }
       return;
     }
-
+    if (tool === 'lancet') {
+      if (this.meteorCooldown <= 0) { this.entities.spawnFpvDrone(gx, gy, 1); this.meteorCooldown=0.35; }
+      return;
+    }
+    if (tool === 'fighter') {
+      if (this.meteorCooldown <= 0) { this.entities.spawnCruiseMissile(gx, gy, 0); this.meteorCooldown=0.4; }
+      return;
+    }
+    // Баллистика
+    if (tool === 'ballistic') {
+      if (this.meteorCooldown <= 0) { const power=Math.max(0.9,Math.min(2.0,0.7+radius*0.09)); this.entities.spawnBallisticMissile(gx, gy, 0, 0, power); this.meteorCooldown=0.6; }
+      return;
+    }
+    if (tool === 'cruise') {
+      if (this.meteorCooldown <= 0) { this.entities.spawnBallisticMissile(gx, gy, 0, 1, 0.9); this.meteorCooldown=0.5; }
+      return;
+    }
+    if (tool === 'fab') {
+      if (this.meteorCooldown <= 0) { const p=Math.max(0.75,Math.min(2.1,0.65+radius*0.1)); this.entities.spawnMeteor(gx, gy, p); this.meteorCooldown=0.3; }
+      return;
+    }
+    if (tool === 'grad') {
+      if (this.meteorCooldown <=0){ for(let k=0;k<6;k++){ const ox=(Math.random()-0.5)*radius*1.8, oy=(Math.random()-0.5)*radius*1.8; this.entities.spawnMeteor(gx+ox, gy+oy, 0.55); } this.meteorCooldown=0.5; } return;
+    }
+    if (tool === 'artillery' || tool === 'mortar') {
+      if (this.meteorCooldown <=0){ this.entities.spawnArtilleryShell(gx, gy, tool==='mortar'?0:1); this.meteorCooldown=0.18; } return;
+    }
+    // постройки
+    if (tool==='bunker'||tool==='barracks'||tool==='depot'||tool==='hq'||tool==='pvo'||tool==='radar'||tool==='wall'||tool==='mine') {
+      this.placeMilitaryBuilding(tool, gx, gy, radius);
+      return;
+    }
+    // техника/пехота
     if (
-      tool === 'weather_rain' ||
-      tool === 'weather_snow' ||
-      tool === 'flood' ||
-      tool === 'weather_clear'
+      tool === 'infantry' ||
+      tool === 'specops' ||
+      tool === 'sniper' ||
+      tool === 'tank' ||
+      tool === 'apc'
     ) {
-      if (this.meteorCooldown <= 0) {
-        this.triggerWeatherOrFloodPower(tool, gx, gy);
-        this.meteorCooldown = 0.35;
-      }
-      return;
-    }
-
-    if (tool === 'dragon') {
-      if (this.meteorCooldown <= 0) {
-        this.entities.spawnDragon(gx, gy);
-        this.meteorCooldown = 0.55;
-      }
-      return;
-    }
-
-    if (tool === 'zombies') {
-      if (this.meteorCooldown <= 0) {
-        this.sfx.playLifeChime();
-        const count = radius <= 3.2 ? 1 : radius <= 6 ? 2 : 4;
-        for (let k = 0; k < count; k++) {
-          const ang = Math.random() * Math.PI * 2;
-          const r = count === 1 ? 0 : Math.sqrt(Math.random()) * radius * 0.5;
-          this.entities.spawnUnit(gx + Math.cos(ang) * r, gy + Math.sin(ang) * r, 14, ROLE_ZOMBIE);
-        }
-        this.meteorCooldown = 0.26;
-      }
-      return;
-    }
-
-    if (
-      tool === 'humans' ||
-      tool === 'warriors' ||
-      tool === 'skeletons' ||
-      tool === 'sheep' ||
-      tool === 'wolves'
-    ) {
-      this.humanSpawnAccum += dt * (tool === 'sheep' || tool === 'wolves' ? 14 : 20);
+      this.humanSpawnAccum += dt * (tool === 'tank' || tool === 'apc' ? 10 : 20);
       const toSpawn = Math.floor(this.humanSpawnAccum);
       if (toSpawn >= 1) {
         this.humanSpawnAccum -= toSpawn;
         this.sfx.playLifeChime();
         const role =
-          tool === 'warriors'
+          tool === 'specops'
             ? ROLE_KNIGHT
-            : tool === 'skeletons'
-              ? ROLE_SKELETON
-              : tool === 'sheep'
-                ? ROLE_SHEEP
-                : tool === 'wolves'
-                  ? ROLE_WOLF
-                  : ROLE_VILLAGER;
+            : tool === 'sniper'
+              ? ROLE_ARCHER
+            : tool === 'tank'
+              ? ROLE_TANK
+              : tool === 'apc'
+                ? ROLE_APC
+              : ROLE_VILLAGER;
         const capped = Math.min(5, toSpawn);
         for (let k = 0; k < capped; k++) {
           const ang = Math.random() * Math.PI * 2;
@@ -291,29 +245,30 @@ export class PhysicsEngine implements ExplosionParticleEmitter {
       return;
     }
 
-    // Direct Surface Materials: Gold Ore, Oil, Gunpowder & Plague
-    if (tool === 'gold' || tool === 'oil' || tool === 'gunpowder' || tool === 'plague') {
+    // Напалм (огненная стена) и Химический удар (зарин)
+    if (tool === 'napalm' || tool === 'chemical') {
       const rCeil = Math.ceil(radius);
       for (let y = Math.max(1, (gy - rCeil) | 0); y <= Math.min(H - 2, (gy + rCeil) | 0); y++) {
         for (let x = Math.max(1, (gx - rCeil) | 0); x <= Math.min(W - 2, (gx + rCeil) | 0); x++) {
           if (Math.hypot(x - gx, y - gy) > radius) continue;
           const idx = y * W + x;
-          if (tool === 'gold' && this.world.water[idx] < 0.05) {
-            this.world.goldOre[idx] = 1.0;
-          } else if (tool === 'oil') {
-            this.world.oil[idx] = Math.min(1.5, this.world.oil[idx] + 3.5 * dt);
-          } else if (tool === 'gunpowder' && this.world.water[idx] < 0.05) {
-            this.world.gunpowder[idx] = Math.min(1.0, this.world.gunpowder[idx] + 4.5 * dt);
-          } else if (tool === 'plague') {
-            this.world.plague[idx] = Math.min(1.0, this.world.plague[idx] + 4.0 * dt);
+          if (tool === 'napalm') {
+            // Термобарический огонь: прожигает бетон и технику
+            this.world.fire[idx] = Math.min(1.6, this.world.fire[idx] + 3.2 * dt);
+            this.world.oil[idx] = Math.min(1.0, this.world.oil[idx] + 1.6 * dt);
+          } else {
+            // Зарин: едкая зелёная кислота + чумные миазмы
+            this.world.acid[idx] = Math.min(1.4, this.world.acid[idx] + 3.0 * dt);
+            this.world.plague[idx] = Math.min(1.0, this.world.plague[idx] + 3.4 * dt);
           }
         }
       }
-      this.sfx.playSandGrain();
+      if (tool === 'napalm') this.sfx.playFireCrackle();
+      else this.sfx.playSteamHiss();
       return;
     }
 
-    // 3. Sky-Falling WorldBox Elements & Powers!
+    // 3. Воздушное снабжение и дымы
     const areaScale = Math.max(1, radius * radius * 1.4);
 
     const dropScatter = (
@@ -347,45 +302,27 @@ export class PhysicsEngine implements ExplosionParticleEmitter {
       }
     };
 
-    if (tool === 'sand') {
-      this.sfx.playSandGrain();
-      const cnt = Math.min(200, Math.max(3, Math.ceil(areaScale * 2.5 * (dt * 60))));
-      dropScatter(PARTICLE_SAND, cnt, 18, 11, 3.4, -7, 0.19, 0.08);
-    } else if (tool === 'water') {
-      this.sfx.playWaterDrop();
-      const cnt = Math.min(220, Math.max(4, Math.ceil(areaScale * 2.8 * (dt * 60))));
-      dropScatter(PARTICLE_WATER, cnt, 21, 13, 2.2, -14, 0.26, 0.12);
-    } else if (tool === 'stone') {
-      const cnt = Math.min(125, Math.max(2, Math.ceil(areaScale * 1.35 * (dt * 60))));
-      dropScatter(PARTICLE_STONE, cnt, 22, 9, 0.9, -20, 0.52, 0.24);
-    } else if (tool === 'soil') {
-      this.sfx.playSandGrain();
-      const cnt = Math.min(150, Math.max(3, Math.ceil(areaScale * 1.8 * (dt * 60))));
-      dropScatter(PARTICLE_SOIL, cnt, 19, 9, 1.8, -14, 0.36, 0.16);
-    } else if (tool === 'lava') {
-      this.sfx.playFireCrackle();
-      const cnt = Math.min(150, Math.max(3, Math.ceil(areaScale * 1.9 * (dt * 60))));
-      dropScatter(PARTICLE_LAVA, cnt, 20, 10, 2.4, -12, 0.24, 0.12);
-    } else if (tool === 'snow') {
-      this.sfx.playSandGrain();
-      const cnt = Math.min(170, Math.max(4, Math.ceil(areaScale * 2.2 * (dt * 60))));
-      dropScatter(PARTICLE_SNOW, cnt, 19, 12, 4.2, -2, 0.24, 0.10);
-    } else if (tool === 'seeds') {
+    if (tool === 'supply') {
+      // Парашютный сброс ящиков БК
       this.sfx.playLifeChime();
-      const cnt = Math.min(110, Math.max(3, Math.ceil(areaScale * 1.5 * (dt * 60))));
-      dropScatter(PARTICLE_SEED, cnt, 17, 10, 3.6, -6, 1.0, 0);
-    } else if (tool === 'fire') {
+      const cnt = Math.min(90, Math.max(3, Math.ceil(areaScale * 1.4 * (dt * 60))));
+      dropScatter(PARTICLE_SEED, cnt, 26, 10, 1.4, -3, 1.0, 0);
+    } else if (tool === 'napalm') {
       this.sfx.playFireCrackle();
-      const cnt = Math.min(140, Math.max(4, Math.ceil(areaScale * 2.0 * (dt * 60))));
+      const cnt = Math.min(150, Math.max(4, Math.ceil(areaScale * 2.1 * (dt * 60))));
       dropScatter(PARTICLE_FIRE, cnt, 16, 10, 4.4, -11, 0.9, 0.3);
-    } else if (tool === 'acid') {
+    } else if (tool === 'chemical') {
       this.sfx.playSteamHiss();
       const cnt = Math.min(160, Math.max(3, Math.ceil(areaScale * 2.0 * (dt * 60))));
       dropScatter(PARTICLE_ACID, cnt, 20, 11, 2.4, -14, 0.22, 0.10);
-    } else if (tool === 'tnt') {
-      this.sfx.playUiClick(320);
-      const cnt = Math.min(95, Math.max(2, Math.ceil(areaScale * 1.25 * (dt * 60))));
-      dropScatter(PARTICLE_TNT, cnt, 16, 7, 0.8, -16, 0.45, 0.15);
+    } else if (tool === 'trench' || tool === 'berm') {
+      this.sfx.playSandGrain();
+      const cnt = Math.min(120, Math.max(2, Math.ceil(areaScale * 1.2 * (dt * 60))));
+      dropScatter(PARTICLE_SOIL, cnt, 12, 6, 1.2, -6, 0.3, 0.12);
+    } else if (tool === 'fortify') {
+      this.sfx.playSandGrain();
+      const cnt = Math.min(110, Math.max(2, Math.ceil(areaScale * 1.15 * (dt * 60))));
+      dropScatter(PARTICLE_STONE, cnt, 14, 7, 0.9, -10, 0.45, 0.2);
     }
   }
 
@@ -520,6 +457,47 @@ export class PhysicsEngine implements ExplosionParticleEmitter {
     }
   }
 
+  private applySmokeScreen(gx: number, gy: number, radius: number, dt: number): void {
+    const W=WORLD_W, H=WORLD_H;
+    for(let k=0;k<12;k++){
+      const a=Math.random()*Math.PI*2, r=Math.random()*radius;
+      const px=gx+Math.cos(a)*r, py=gy+Math.sin(a)*r;
+      if(px<1||px>=W-1||py<1||py>=H-1) continue;
+      const idx=(py|0)*W+(px|0);
+      this.spawnParticle(PARTICLE_SMOKE, px, py, this.world.surfaceHeight(idx)+1.2, (Math.random()-0.5)*4, (Math.random()-0.5)*4, 4+Math.random()*4, 0, 2.0);
+      this.spawnParticle(PARTICLE_SMOKE, px, py, this.world.surfaceHeight(idx)+0.8, (Math.random()-0.5)*3, (Math.random()-0.5)*3, 3,0,1.5);
+    }
+    this.sfx.playSteamHiss();
+  }
+  private placeMilitaryBuilding(tool: ToolId, gx: number, gy: number, radius: number): void {
+    const W=WORLD_W, H=WORLD_H;
+    const map: Record<string, number> = { 'bunker': BUILDING_BASE, 'barracks': 2, 'depot': 4, 'hq': 3, 'pvo': 5, 'radar': BUILDING_RADAR, 'wall': BUILDING_WALL, 'mine': 99 };
+    const bType = map[tool] ?? 2;
+    const rCeil = Math.ceil(radius);
+    for(let y=Math.max(1, (gy-rCeil)|0); y<=Math.min(H-2,(gy+rCeil)|0); y++){
+      for(let x=Math.max(1,(gx-rCeil)|0); x<=Math.min(W-2,(gx+rCeil)|0); x++){
+        if(Math.hypot(x-gx,y-gy)>radius) continue;
+        const idx=y*W+x;
+        if(this.world.water[idx]>0.08 || this.world.lava[idx]>0.02) continue;
+        if(bType===99){ // mine -> tnt
+          this.world.tnt[idx]=Math.min(1.0, this.world.tnt[idx]+0.6);
+          this.world.fuse[idx]=0;
+        } else {
+          if(this.world.buildings[idx]!==0) continue;
+          this.world.buildings[idx]=bType;
+          this.world.buildingHp[idx]= bType===3?520 : bType===BUILDING_BASE?420 : bType===5?260 : bType===BUILDING_RADAR?180 : bType===BUILDING_SILO?320 : bType===4?150 : 120;
+          // assign to nearest settlement or create new
+          let sid=this.world.territory[idx];
+          if(sid===0){ sid=1; }
+          this.world.buildingSettlement[idx]=sid;
+          // find kingdom
+          let k=0; for(const s of this.entities.settlements){ if(s.active && s.id===sid){k=s.kingdom; break;}}
+          this.world.buildingKingdom[idx]=k;
+        }
+      }
+    }
+    this.sfx.playSandGrain();
+  }
   private applyTornadoVortex(gx: number, gy: number, radius: number, dt: number): void {
     const W = WORLD_W;
     const H = WORLD_H;
@@ -645,98 +623,9 @@ export class PhysicsEngine implements ExplosionParticleEmitter {
     );
   }
 
-  public triggerWeatherOrFloodPower(tool: ToolId, gx?: number, gy?: number): void {
-    const W = WORLD_W;
-    const H = WORLD_H;
-
-    if (tool === 'weather_rain') {
-      const next = this.world.weather === 'rain' ? 'storm' : 'rain';
-      this.world.weather = next;
-      this.world.weatherLocked = true;
-      this.world.weatherTimer = 120.0;
-      this.sfx.playSteamHiss();
-      if (this.entities.onWorldEvent) {
-        this.entities.onWorldEvent(
-          next === 'storm'
-            ? '⛈ Грозовой шторм! Проливной ливень стремительно затапливает низины!'
-            : '🌧 Затяжной дождь! Реки и озёра начинают медленно выходить из берегов!',
-          '#74c0fc',
-        );
-      }
-      return;
-    }
-
-    if (tool === 'weather_snow') {
-      this.world.weather = 'snow';
-      this.world.weatherLocked = true;
-      this.world.weatherTimer = 95.0;
-      this.sfx.playSandGrain();
-      if (this.entities.onWorldEvent) {
-        this.entities.onWorldEvent(
-          '❄️ Снегопад! Острова укрывает белым снегом, а мелководья замерзают!',
-          '#e5f6ff',
-        );
-      }
-      return;
-    }
-
-    if (tool === 'weather_clear') {
-      this.world.weather = 'clear';
-      this.world.weatherLocked = false;
-      this.world.weatherTimer = 55.0;
-      this.sfx.playLifeChime();
-      if (this.entities.onWorldEvent) {
-        this.entities.onWorldEvent(
-          '☀️ Ясное солнце! Дождь стих, паводковые воды уходят обратно в океан!',
-          '#ffd43b',
-        );
-      }
-      return;
-    }
-
-    if (tool === 'flood') {
-      this.world.weather = 'storm';
-      this.world.weatherLocked = true;
-      this.world.weatherTimer = 140.0;
-      const newSea = Math.min(this.world.baseSeaLevel + 6.4, this.world.settings.seaLevel + 1.6);
-      this.world.settings.seaLevel = newSea;
-      this.sfx.playExplosion(0.95);
-      this.entities.screenShake = Math.max(this.entities.screenShake, 8.0);
-
-      // Push foaming tsunami floodwaters from all sea tiles & optional click epicenter!
-      for (let i = 0; i < this.world.size; i++) {
-        const h = this.world.solidHeight(i);
-        if (h < newSea - 0.15 && this.world.water[i] > 0.05) {
-          const targetDepth = newSea - h;
-          if (this.world.water[i] < targetDepth) {
-            this.world.water[i] += (targetDepth - this.world.water[i]) * 0.48;
-            if (targetDepth < 1.6) {
-              this.world.foam[i] = 0.85;
-            }
-          }
-        }
-      }
-      if (gx !== undefined && gy !== undefined) {
-        const cx = Math.max(2, Math.min(W - 3, gx | 0));
-        const cy = Math.max(2, Math.min(H - 3, gy | 0));
-        for (let oy = -7; oy <= 7; oy++) {
-          for (let ox = -7; ox <= 7; ox++) {
-            if (ox * ox + oy * oy > 49) continue;
-            const ni = (cy + oy) * W + (cx + ox);
-            this.world.water[ni] += 1.4;
-            this.world.foam[ni] = 1.0;
-          }
-        }
-      }
-
-      if (this.entities.onWorldEvent) {
-        const rise = (newSea - this.world.baseSeaLevel).toFixed(1);
-        this.entities.onWorldEvent(
-          `🌊 ВЕЛИКИЙ ПОТОП! Уровень мирового океана поднялся на +${rise}м!`,
-          '#3bc9db',
-        );
-      }
-    }
+  public triggerWeatherOrFloodPower(_tool: ToolId, _gx?: number, _gy?: number): void {
+    // Погодные божественные силы заменены боевыми операциями.
+    return;
   }
 
   private stepWeatherAndFlood(dt: number): void {

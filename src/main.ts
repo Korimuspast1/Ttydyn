@@ -38,7 +38,7 @@ world.onTerrainRegenerated = () => {
 };
 entities.reset();
 
-let activeTool: ToolId = 'sand';
+let activeTool: ToolId = 'infantry';
 let brushIndex = 2; // 'M' default
 let timeScale = 1;
 let touchPanMode = false;
@@ -114,7 +114,7 @@ async function triggerScreenshotAction(): Promise<void> {
   );
   const saved = await captureWorldScreenshot(canvas);
   if (saved) {
-    ui.showEventToast(`📸 Скриншот сохранён: ${saved}`, '#99e9f2');
+    ui.showEventToast(`📸 Снимок позиции сохранён: ${saved}`, '#99e9f2');
   }
 }
 
@@ -123,9 +123,9 @@ function triggerQuickLoadAction(): void {
   const loaded = saveManager.loadLatestWorld(world, entities);
   if (loaded) {
     renderer.fitCameraToViewport();
-    ui.showEventToast(`📂 Быстрая загрузка: «${loaded.name}»`, '#ffd466');
+    ui.showEventToast(`📂 Развёртывание: «${loaded.name}»`, '#ffd466');
   } else {
-    ui.showEventToast('⚠ Нет сохранённых миров — нажмите F5 для быстрого сохранения!', '#ff9c92');
+    ui.showEventToast('⚠ Нет сохранённых операций — нажмите F5 для быстрого сохранения!', '#ff9c92');
   }
 }
 
@@ -133,14 +133,7 @@ const ui = new WorldBoxUI(uiRoot, world, sfx, {
   onSelectTool: (tool) => {
     activeTool = tool;
     physics.resetStroke();
-    if (
-      tool === 'weather_rain' ||
-      tool === 'weather_snow' ||
-      tool === 'flood' ||
-      tool === 'weather_clear'
-    ) {
-      physics.triggerWeatherOrFloodPower(tool);
-    } else if (tool === 'peace') {
+    if (tool === 'alliance') {
       entities.triggerPeacePower();
     }
   },
@@ -204,17 +197,17 @@ const ui = new WorldBoxUI(uiRoot, world, sfx, {
     physics.clearParticles();
     world.generateRandomWorld();
     renderer.fitCameraToViewport();
-    ui.showEventToast(`🎲 Создан новый случайный мир #${world.seed % 10000}!`, '#7af48c');
+    ui.showEventToast(`🎲 Создан новый театр военных действий #${world.seed % 10000}!`, '#7af48c');
   },
   onSaveGame: (name) => {
     const saved = saveManager.saveWorld(world, entities, name);
-    ui.showEventToast(`💾 Игра сохранена: «${saved.name}»`, '#6ce2ff');
+    ui.showEventToast(`💾 Операция сохранена: «${saved.name}»`, '#6ce2ff');
   },
   onLoadGame: (slotId) => {
     physics.clearParticles();
     if (saveManager.loadWorld(slotId, world, entities)) {
       renderer.fitCameraToViewport();
-      ui.showEventToast('📂 Сохранённый мир успешно загружен!', '#ffd466');
+      ui.showEventToast('📂 Сохранённая операция успешно развёрнута!', '#ffd466');
     }
   },
   onDeleteSave: (slotId) => {
@@ -223,7 +216,7 @@ const ui = new WorldBoxUI(uiRoot, world, sfx, {
   },
   onExportSaveFile: (name) => {
     saveManager.exportToFile(world, entities, name);
-    ui.showEventToast('⬇ Сохранение мира экспортировано (.json)', '#6ce2ff');
+    ui.showEventToast('⬇ Сохранение экспортировано (.json)', '#6ce2ff');
   },
   onImportSaveFile: async (file) => {
     physics.clearParticles();
@@ -231,7 +224,7 @@ const ui = new WorldBoxUI(uiRoot, world, sfx, {
     if (res) {
       renderer.fitCameraToViewport();
       ui.refreshSavesList();
-      ui.showEventToast(`📂 Загружен мир из файла: «${res.name}»`, '#7af48c');
+      ui.showEventToast(`📂 Загружена операция из файла: «${res.name}»`, '#7af48c');
     }
   },
   getSavedWorlds: () => saveManager.listSaves(),
@@ -492,7 +485,7 @@ function finishPointer(e: PointerEvent): void {
   if (activePointers.size === 0) {
     if (!gestureWasMultiTouch && tracked) {
       if (pendingTouchStroke && cursorInBounds) {
-        triggerHaptic(activeTool === 'nuke' || activeTool === 'meteor' ? 'heavy' : 'tap');
+        triggerHaptic(activeTool === 'nuke' || activeTool === 'ballistic' || activeTool === 'grad' ? 'heavy' : 'tap');
         physics.applyBrush(activeTool, cursorGx, cursorGy, BRUSH_SIZES[brushIndex].radius, 1 / 60);
       } else if (touchPanMode && !panDragMoved && cursorInBounds) {
         if (entities.selectUnitNear(cursorGx, cursorGy, 5.2)) {
@@ -582,22 +575,26 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
-  if (code === 'Digit1') ui.selectTool('sand', true);
-  else if (code === 'Digit2') ui.selectTool('water', true);
-  else if (code === 'Digit3') ui.selectTool('stone', true);
-  else if (code === 'Digit4') ui.selectTool('soil', true);
-  else if (code === 'Digit5') ui.selectTool('lava', true);
-  else if (code === 'Digit6') ui.selectTool('snow', true);
-  else if (code === 'Digit7') ui.selectTool('seeds', true);
-  else if (code === 'Digit8') ui.selectTool('humans', true);
-  else if (code === 'Digit9') ui.selectTool('fire', true);
-  else if (code === 'Digit0') ui.selectTool('acid', true);
-  else if (code === 'Minus') ui.selectTool('tnt', true);
-  else if (code === 'Equal') ui.selectTool('meteor', true);
-  else if (code === 'KeyQ') ui.selectTool('raise', true);
-  else if (code === 'KeyE') ui.selectTool('dig', true);
-  else if (code === 'KeyF') ui.selectTool('level', true);
-  else if (code === 'KeyV') ui.selectTool('wave', true);
+  if (code === 'Digit1') ui.selectTool('bunker', true);
+  else if (code === 'Digit2') ui.selectTool('barracks', true);
+  else if (code === 'Digit3') ui.selectTool('depot', true);
+  else if (code === 'Digit4') ui.selectTool('hq', true);
+  else if (code === 'Digit5') ui.selectTool('pvo', true);
+  else if (code === 'Digit6') ui.selectTool('radar', true);
+  else if (code === 'Digit7') ui.selectTool('infantry', true);
+  else if (code === 'Digit8') ui.selectTool('specops', true);
+  else if (code === 'Digit9') ui.selectTool('sniper', true);
+  else if (code === 'Digit0') ui.selectTool('fpv_drone', true);
+  else if (code === 'Minus') ui.selectTool('lancet', true);
+  else if (code === 'Equal') ui.selectTool('fighter', true);
+  else if (code === 'KeyQ') ui.selectTool('trench', true);
+  else if (code === 'KeyE') ui.selectTool('berm', true);
+  else if (code === 'KeyF') ui.selectTool('fortify', true);
+  else if (code === 'KeyV') ui.selectTool('smoke', true);
+  else if (code === 'KeyL') ui.selectTool('artillery', true);
+  else if (code === 'KeyG') ui.selectTool('war', true);
+  else if (code === 'KeyP') ui.selectTool('alliance', true);
+  else if (code === 'KeyR') ui.selectTool('recon', true);
   else if (code === 'KeyI') ui.selectTool('inspect', true);
   else if (code === 'BracketLeft') ui.setBrushIndex(brushIndex - 1, true);
   else if (code === 'BracketRight') ui.setBrushIndex(brushIndex + 1, true);
@@ -619,12 +616,12 @@ window.addEventListener('keydown', (e) => {
   } else if (code === 'KeyZ') {
     sfx.playUiClick(660);
     renderer.focusOnSettlement(villageFocusIndex++);
-  } else if (code === 'KeyR') {
+  } else if (code === 'KeyN') {
     sfx.playUiClick(620);
     physics.clearParticles();
     world.generateRandomWorld();
     renderer.fitCameraToViewport();
-    ui.showEventToast(`🎲 Создан новый случайный мир #${world.seed % 10000}!`, '#7af48c');
+    ui.showEventToast(`🎲 Создан новый случайный театр военных действий #${world.seed % 10000}!`, '#7af48c');
   }
 });
 
@@ -648,7 +645,7 @@ function inspectTileAtCursor(): CursorInspection {
       inBounds: false,
       gx: 0,
       gy: 0,
-      biomeName: 'Океан',
+      biomeName: 'Водная гладь',
       settlementName: null,
       soil: 0,
       stone: 0,
@@ -683,33 +680,35 @@ function inspectTileAtCursor(): CursorInspection {
   const speed = Math.hypot(world.velX[idx], world.velY[idx]);
   const ownerSettle = entities.getSettlementById(world.territory[idx]);
 
-  let biomeName = 'Равнина';
-  if (lava > 0.03) biomeName = 'Раскалённая лава';
-  else if (world.acid[idx] > 0.02) biomeName = 'Лужа кислоты';
-  else if (world.plague[idx] > 0.05) biomeName = 'Чумные миазмы';
-  else if (world.fire[idx] > 0.05) biomeName = 'Пожар!';
-  else if (world.oil[idx] > 0.05) biomeName = 'Пятно нефти';
-  else if (world.gunpowder[idx] > 0.05) biomeName = 'Дорожка пороха';
-  else if (world.goldOre[idx] > 0.25) biomeName = 'Золотая жила!';
-  else if (world.buildings[idx] === 6) biomeName = 'Разруха (руины дома)';
-  else if (world.buildings[idx] === 7) biomeName = 'База выживших';
-  else if (world.buildings[idx] === 8) biomeName = 'Деревянный частокол';
-  else if (world.buildings[idx] === 3) biomeName = 'Каменная цитадель';
-  else if (world.buildings[idx] === 4) biomeName = 'Мельница и пшеница';
-  else if (world.buildings[idx] === 5) biomeName = 'Сторожевая башня';
-  else if (world.buildings[idx] >= 2) biomeName = 'Жилой дом';
-  else if (world.tnt[idx] > 0.04) biomeName = 'Заряд TNT';
-  else if (ice > 0.04) biomeName = 'Ледяной покров';
-  else if (water > 2.8) biomeName = 'Глубокий океан';
-  else if (water > 0.9) biomeName = speed > 0.7 ? 'Бурный поток' : 'Лагуна / Пролив';
-  else if (water > 0.03) biomeName = speed > 0.75 ? 'Речной порог' : 'Мелководье';
-  else if (world.snowCover[idx] > 0.25) biomeName = 'Снежный склон';
-  else if (glass > 0.08) biomeName = 'Плавленое стекло';
-  else if (sand > 0.12) biomeName = world.wetness[idx] > 0.4 ? 'Мокрый пляж' : 'Золотой песок';
-  else if (stone > 0.18) biomeName = totalSolid > 12.5 ? 'Снежный пик' : 'Горная скала';
-  else if (world.ash[idx] > 0.35) biomeName = 'Выжженный пепел';
-  else if (world.grass[idx] > 0.4) biomeName = totalSolid > 6.1 ? 'Лесной холм' : 'Зелёный луг';
-  else biomeName = 'Земля';
+  let biomeName = 'Открытая местность';
+  if (lava > 0.03) biomeName = '🔥 Пожарище / горение';
+  else if (world.acid[idx] > 0.02) biomeName = '☠ Зона хим. заражения';
+  else if (world.plague[idx] > 0.05) biomeName = '☠ Очаг заражения';
+  else if (world.fire[idx] > 0.05) biomeName = '🔥 Очаг возгорания!';
+  else if (world.oil[idx] > 0.05) biomeName = 'Разлив ГСМ';
+  else if (world.gunpowder[idx] > 0.05) biomeName = 'Рассыпанный порох / БК';
+  else if (world.goldOre[idx] > 0.25) biomeName = 'Месторождение (ресурсы)';
+  else if (world.buildings[idx] === 6) biomeName = '🏚 Руины объекта';
+  else if (world.buildings[idx] === 7) biomeName = '🛡 Железобетонный бункер';
+  else if (world.buildings[idx] === 8) biomeName = '🚧 Противотанковое заграждение';
+  else if (world.buildings[idx] === 9) biomeName = '📡 РЛС (радиолокационная станция)';
+  else if (world.buildings[idx] === 10) biomeName = '🚀 Шахта баллистической ракеты';
+  else if (world.buildings[idx] === 3) biomeName = '⭐ ШТАБ (командный пункт)';
+  else if (world.buildings[idx] === 4) biomeName = '📦 Склад ГСМ и боеприпасов';
+  else if (world.buildings[idx] === 5) biomeName = '🛡 Позиция ПВО (ЗРК)';
+  else if (world.buildings[idx] >= 2) biomeName = '🏢 Казарма / объект базы';
+  else if (world.tnt[idx] > 0.04) biomeName = '💥 Минное поле / заряд';
+  else if (ice > 0.04) biomeName = 'Ледяная корка';
+  else if (water > 2.8) biomeName = 'Глубоководье';
+  else if (water > 0.9) biomeName = speed > 0.7 ? 'Бурная река (водная преграда)' : 'Озеро / залив';
+  else if (water > 0.03) biomeName = speed > 0.75 ? 'Ручной брод' : 'Мелководье (проходимо)';
+  else if (world.snowCover[idx] > 0.25) biomeName = 'Заснеженный склон';
+  else if (glass > 0.08) biomeName = 'Оплавленное стекло (воронка)';
+  else if (sand > 0.12) biomeName = world.wetness[idx] > 0.4 ? 'Грязевой берег' : 'Песчаный грунт';
+  else if (stone > 0.18) biomeName = totalSolid > 12.5 ? 'Горная вершина (высота)' : 'Скальный массив';
+  else if (world.ash[idx] > 0.35) biomeName = 'Выжженная земля (после удара)';
+  else if (world.grass[idx] > 0.4) biomeName = totalSolid > 6.1 ? 'Лесистая возвышенность' : 'Зелёная равнина';
+  else biomeName = 'Грунт';
 
   return {
     inBounds: true,

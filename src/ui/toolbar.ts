@@ -49,7 +49,7 @@ export interface ToolbarCallbacks {
 
 export class WorldBoxUI {
   private activeTab: ToolbarTab = 'all';
-  private activeTool: ToolId = 'sand';
+  private activeTool: ToolId = 'infantry';
   private brushIndex = 2; // 'M'
   private timeScale = 1;
   private touchPanMode = false;
@@ -112,7 +112,7 @@ export class WorldBoxUI {
   public markNativePcReady(platform: string): void {
     const label = platform === 'win32' ? 'PC WINDOWS .EXE' : 'PC DESKTOP EDITION';
     if (this.versionTagEl) {
-      this.versionTagEl.textContent = `v3.6 ${label}`;
+      this.versionTagEl.textContent = `v7.0 ${label}`;
     }
     this.renderPcNativeButtons();
   }
@@ -291,7 +291,7 @@ export class WorldBoxUI {
       meta.className = 'wb-save-meta';
       meta.innerHTML = `
         <div class="wb-save-name">${this.escapeHtml(s.name)}</div>
-        <div class="wb-save-sub">Жители: <b>${s.population}</b> • Дома: <b>${s.houses}</b> • ${s.savedAt}</div>
+        <div class="wb-save-sub">Бойцы: <b>${s.population}</b> • Объекты: <b>${s.houses}</b> • ${s.savedAt}</div>
       `;
       card.appendChild(meta);
 
@@ -345,25 +345,25 @@ export class WorldBoxUI {
     topLeft.innerHTML = `
       <div class="wb-brand-row">
         <span class="wb-crown-dot"></span>
-        <span class="wb-game-title">WORLDBOX</span>
-        <span id="wb-version-tag" class="wb-version-tag">${isNativePcApp() ? 'v3.6 PC DESKTOP' : 'v3.6 PC + MOBILE'}</span>
+        <span class="wb-game-title">ВОЕННЫЙ СИМУЛЯТОР</span>
+        <span id="wb-version-tag" class="wb-version-tag">${isNativePcApp() ? 'v7.0 MILITARY PC DESKTOP' : 'v7.0 MILITARY PC + MOBILE'}</span>
         <button id="wb-hide-top-left" class="wb-collapse-btn" title="Скрыть верхнюю панель (H)">▲</button>
       </div>
       <div class="wb-stats-row">
         <span id="wb-fps" class="wb-fps-pill">60 FPS</span>
         <span class="wb-sep wb-desktop-only">|</span>
-        <span class="wb-pop-pill">👥 <span class="wb-stat-word">Жители: </span><b id="wb-pop">0</b></span>
+        <span class="wb-pop-pill">👥 <span class="wb-stat-word">Бойцы: </span><b id="wb-pop">0</b></span>
         <span class="wb-sep">•</span>
-        <span>🏠 <span class="wb-stat-word">Дома: </span><b id="wb-houses">0</b></span>
+        <span>🏠 <span class="wb-stat-word">Объекты: </span><b id="wb-houses">0</b></span>
         <span class="wb-sep">•</span>
-        <span class="wb-war-pill">⚔ <span class="wb-stat-word">Войны: </span><b id="wb-wars">0</b></span>
+        <span class="wb-war-pill">⚔ <span class="wb-stat-word">Конфликты: </span><b id="wb-wars">0</b></span>
         <span class="wb-sep">•</span>
         <span id="wb-weather" class="wb-weather-pill">☀ Ясно</span>
         <button id="wb-mobile-menu-toggle" class="wb-collapse-btn wb-mobile-menu-btn">⚙ МЕНЮ</button>
         <button id="wb-mobile-hide-top" class="wb-collapse-btn wb-mobile-only-inline" title="Скрыть HUD">▲</button>
       </div>
       <div class="wb-hints-row">
-        ЛКМ: сила &bull; ПКМ/WASD+Shift: камера &bull; Колесо: зум &bull; Ctrl+Колесо: кисть &bull; F5/F9: сохр. &bull; F11: экран &bull; F12: скриншот
+        ЛКМ: операция &bull; ПКМ/WASD+Shift: камера &bull; Колесо: зум &bull; Ctrl+Колесо: радиус &bull; F5/F9: сохр. &bull; F11: экран &bull; F12: скриншот &bull; N: новый театр
       </div>
     `;
     this.topLeftEl = topLeft;
@@ -662,7 +662,7 @@ export class WorldBoxUI {
 
     this.restoreBottomBtn = document.createElement('button');
     this.restoreBottomBtn.className = 'wb-panel wb-restore-pill wb-restore-bottom wb-panel-hidden';
-    this.restoreBottomBtn.textContent = `▲ ПАНЕЛЬ БОГА (${POWER_ITEMS.length} СИЛ)`;
+    this.restoreBottomBtn.textContent = `▲ ПАНЕЛЬ ОПЕРАЦИЙ (${POWER_ITEMS.length})`;
     this.restoreBottomBtn.title = 'Показать нижнюю панель инструментов';
     this.restoreBottomBtn.addEventListener('click', () => {
       triggerHaptic('tap');
@@ -688,12 +688,13 @@ export class WorldBoxUI {
     tabsRow.className = 'wb-tabs-strip';
 
     const tabSpecs: { id: ToolbarTab; label: string; shortLabel: string; icon: PixelIconName }[] = [
-      { id: 'all', label: `Все (${POWER_ITEMS.length})`, shortLabel: `Все (${POWER_ITEMS.length})`, icon: 'powers' },
-      { id: 'elements', label: 'Стихии и Руды', shortLabel: 'Стихии', icon: 'gold' },
-      { id: 'kingdoms', label: 'Народы и Войны', shortLabel: 'Народы', icon: 'war' },
-      { id: 'chaos', label: 'Погода и Кары', shortLabel: 'Погода/Кары', icon: 'nuke' },
-      { id: 'saves', label: 'Мир и Сохранения', shortLabel: 'Миры', icon: 'save' },
-      { id: 'physics', label: 'Физика и ПК', shortLabel: 'Физика', icon: 'physics' },
+      { id: 'all', label: `Все операции (${POWER_ITEMS.length})`, shortLabel: `Все (${POWER_ITEMS.length})`, icon: 'powers' },
+      { id: 'defense', label: 'База и Оборона', shortLabel: 'Оборона', icon: 'bunker' },
+      { id: 'offense', label: 'Войска и Техника', shortLabel: 'Войска', icon: 'infantry' },
+      { id: 'drones', label: 'Дроны и Авиация', shortLabel: 'Дроны', icon: 'fpv_drone' },
+      { id: 'missiles', label: 'Ракеты и Артиллерия', shortLabel: 'Ракеты', icon: 'ballistic' },
+      { id: 'saves', label: 'Театр и Сохранения', shortLabel: 'Миры', icon: 'save' },
+      { id: 'physics', label: 'Настройки и ПК', shortLabel: 'Настройки', icon: 'physics' },
     ];
 
     for (const t of tabSpecs) {
@@ -786,10 +787,10 @@ export class WorldBoxUI {
     const shelf = document.createElement('div');
     shelf.className = 'wb-shelf';
 
-    // TAB 1: ALL 36 WORLDBOX POWERS
+    // TAB 1: ВСЕ БОЕВЫЕ ОПЕРАЦИИ
     const allTray = document.createElement('div');
     allTray.className = 'wb-tray wb-powers-grid wb-all-powers-tray';
-    const groupsOrder: PowerGroup[] = ['materials', 'kingdoms', 'chaos', 'terraform'];
+    const groupsOrder: PowerGroup[] = ['engineer', 'defense', 'infantry', 'command', 'drones', 'artillery'];
     groupsOrder.forEach((grp, gIdx) => {
       const grpItems = POWER_ITEMS.filter((p) => p.group === grp);
       for (const item of grpItems) {
@@ -804,32 +805,41 @@ export class WorldBoxUI {
     this.tabContainers.all = allTray;
     shelf.appendChild(allTray);
 
-    // TAB 2: ELEMENTS, ORES & TERRAFORMING
-    const elementsTray = document.createElement('div');
-    elementsTray.className = 'wb-tray wb-powers-grid';
-    for (const item of POWER_ITEMS.filter((p) => p.group === 'materials' || p.group === 'terraform')) {
-      elementsTray.appendChild(this.createPowerButton(item.id, item.name, item.hotkey, item.accentColor, false));
+    // TAB 2: ИНЖЕНЕРИЯ, БАЗА И ОБОРОНА
+    const defenseTray = document.createElement('div');
+    defenseTray.className = 'wb-tray wb-powers-grid';
+    for (const item of POWER_ITEMS.filter((p) => p.group === 'engineer' || p.group === 'defense')) {
+      defenseTray.appendChild(this.createPowerButton(item.id, item.name, item.hotkey, item.accentColor, false));
     }
-    this.tabContainers.elements = elementsTray;
-    shelf.appendChild(elementsTray);
+    this.tabContainers.defense = defenseTray;
+    shelf.appendChild(defenseTray);
 
-    // TAB 3: KINGDOMS, UNIT INSPECTION, DIPLOMACY, WAR & CREATURES
-    const kingdomsTray = document.createElement('div');
-    kingdomsTray.className = 'wb-tray wb-powers-grid';
-    for (const item of POWER_ITEMS.filter((p) => p.group === 'kingdoms')) {
-      kingdomsTray.appendChild(this.createPowerButton(item.id, item.name, item.hotkey, item.accentColor, false));
+    // TAB 3: ПЕХОТА, ТЕХНИКА И КОМАНДОВАНИЕ
+    const offenseTray = document.createElement('div');
+    offenseTray.className = 'wb-tray wb-powers-grid';
+    for (const item of POWER_ITEMS.filter((p) => p.group === 'infantry' || p.group === 'command')) {
+      offenseTray.appendChild(this.createPowerButton(item.id, item.name, item.hotkey, item.accentColor, false));
     }
-    this.tabContainers.kingdoms = kingdomsTray;
-    shelf.appendChild(kingdomsTray);
+    this.tabContainers.offense = offenseTray;
+    shelf.appendChild(offenseTray);
 
-    // TAB 4: WEATHER, FLOODS, PLAGUES & SUPERWEAPONS
-    const chaosTray = document.createElement('div');
-    chaosTray.className = 'wb-tray wb-powers-grid';
-    for (const item of POWER_ITEMS.filter((p) => p.group === 'chaos')) {
-      chaosTray.appendChild(this.createPowerButton(item.id, item.name, item.hotkey, item.accentColor, false));
+    // TAB 4: ДРОНЫ И АВИАЦИЯ
+    const dronesTray = document.createElement('div');
+    dronesTray.className = 'wb-tray wb-powers-grid';
+    for (const item of POWER_ITEMS.filter((p) => p.group === 'drones')) {
+      dronesTray.appendChild(this.createPowerButton(item.id, item.name, item.hotkey, item.accentColor, false));
     }
-    this.tabContainers.chaos = chaosTray;
-    shelf.appendChild(chaosTray);
+    this.tabContainers.drones = dronesTray;
+    shelf.appendChild(dronesTray);
+
+    // TAB 5: АРТИЛЛЕРИЯ И РАКЕТЫ
+    const missilesTray = document.createElement('div');
+    missilesTray.className = 'wb-tray wb-powers-grid';
+    for (const item of POWER_ITEMS.filter((p) => p.group === 'artillery')) {
+      missilesTray.appendChild(this.createPowerButton(item.id, item.name, item.hotkey, item.accentColor, false));
+    }
+    this.tabContainers.missiles = missilesTray;
+    shelf.appendChild(missilesTray);
 
     // TAB 5: RANDOM WORLD GENERATOR + MULTI-SLOT WORLD SAVES & FILE BACKUP
     const savesTray = document.createElement('div');

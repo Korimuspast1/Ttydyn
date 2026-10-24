@@ -249,147 +249,114 @@ function bakeTntPixel(): HTMLCanvasElement {
 
 function bakeCottagePixel(pal: KingdomPalette): HTMLCanvasElement {
   const b = new PixBuf(34, 32);
-  // Brick chimney on right
-  b.rect(23, 5, 4, 9, '#9c5a49');
-  b.rect(22, 4, 6, 2, '#7a4234');
-  // Cream half-timber walls + stone foundation
-  b.rect(6, 15, 22, 13, '#f3e8d2');
-  b.rect(21, 15, 7, 13, '#dfd1b8');
-  b.rect(5, 26, 24, 3, '#868e96');
-  // Oak timber beams
-  b.rect(6, 15, 2, 11, '#6c4428');
-  b.rect(26, 15, 2, 11, '#58351e');
-  b.rect(6, 20, 22, 1, '#6c4428');
-  // Arched wooden door
-  b.rect(11, 20, 5, 8, '#7c4d2b');
-  b.rect(12, 21, 3, 7, '#633b1f');
-  b.px(14, 24, '#ffd43b');
-  // Warm glowing windows
-  b.rect(19, 18, 5, 5, '#4a3222');
-  b.rect(20, 19, 3, 3, '#ffe066');
-  b.px(20, 19, '#fff9db');
-  // Stepped pixel roof in Kingdom colors!
-  b.tri(2, 16, 17, 5, 31, 16, pal.main);
-  b.tri(17, 5, 24, 16, 31, 16, pal.dark);
-  b.line(3, 15, 17, 5, pal.light);
-  b.line(4, 15, 17, 6, pal.light);
+  // Olive drab military barracks
+  b.rect(5, 15, 24, 13, '#6b7a3a');
+  b.rect(22, 15, 7, 13, '#4b5320');
+  b.rect(4, 26, 26, 3, '#3a3d2e');
+  // Reinforced windows with bars
+  b.rect(8, 18, 4, 4, '#2b2b2b');
+  b.rect(9, 19, 2, 2, '#a0a8b0');
+  b.rect(18, 18, 4, 4, '#2b2b2b');
+  b.rect(19, 19, 2, 2, '#a0a8b0');
+  // Steel door
+  b.rect(12, 20, 6, 8, '#4a4a4a');
+  b.rect(13, 21, 4, 6, '#6a6a6a');
+  b.px(16, 24, '#ffd43b');
+  // Flat camo roof with kingdom stripe
+  b.rect(3, 12, 28, 4, pal.main);
+  b.rect(3, 12, 28, 1, pal.light);
+  b.rect(3, 15, 28, 1, pal.dark);
+  // Antenna
+  b.rect(25, 4, 1, 8, '#2b2b2b');
+  b.px(25, 3, '#ff3d00');
   b.outline1px('#18131d');
   return b.toCanvas();
 }
 
 function bakeFarmPixel(pal: KingdomPalette): HTMLCanvasElement {
   const b = new PixBuf(44, 38);
-  // Cozy red wooden barn on left
-  b.rect(4, 20, 18, 14, '#c93b2b');
-  b.tri(2, 21, 13, 12, 24, 21, pal.main);
-  b.line(3, 20, 13, 12, pal.light);
-  // White X-braced barn doors
-  b.rect(9, 24, 8, 10, '#6e2319');
-  b.rect(9, 24, 8, 1, '#f8f9fa');
-  b.line(9, 24, 16, 33, '#f8f9fa');
-  b.line(16, 24, 9, 33, '#f8f9fa');
-
-  // Tall white stone Windmill Tower on right (hub at [32, 17])
-  b.tri(25, 34, 28, 13, 39, 34, '#e9e2d4');
-  b.tri(28, 13, 36, 13, 39, 34, '#cfc5b4');
-  b.rect(26, 32, 13, 3, '#868e96');
-  // Conical windmill cap
-  b.tri(25, 14, 32, 7, 39, 14, pal.main);
-  b.line(26, 13, 32, 7, pal.light);
-  // Windmill door & window
-  b.rect(31, 27, 4, 7, '#6c4428');
-  b.rect(31, 19, 3, 3, '#ffe066');
+  // Depot / Fuel storage + containers
+  b.rect(4, 22, 20, 12, '#5a5a5a');
+  b.rect(4, 22, 20, 2, '#7a7a7a');
+  b.rect(7, 24, 5, 6, '#4a4a4a');
+  b.rect(14, 24, 5, 6, '#4a4a4a');
+  // Camo roof
+  b.tri(2, 22, 13, 12, 24, 22, pal.main);
+  b.line(3, 21, 13, 12, pal.light);
+  // Fuel tanks on right
+  b.ellipse(32, 28, 5, 5, '#3a3a3a');
+  b.ellipse(32, 27, 4, 4, '#ff8f00');
+  b.px(32, 25, '#ffd54f');
+  b.rect(28, 32, 8, 3, '#2b2b2b');
+  // Crates
+  b.rect(30, 18, 6, 5, '#8d6e63');
+  b.rect(31, 19, 4, 1, '#a1887f');
+  b.rect(36, 20, 5, 5, '#6d4c41');
   b.outline1px('#18131d');
   return b.toCanvas();
 }
 
 function bakeTowerPixel(pal: KingdomPalette): HTMLCanvasElement {
   const b = new PixBuf(28, 42);
-  // Stone watchtower body
-  b.rect(8, 14, 12, 25, '#ced4da');
-  b.rect(16, 14, 4, 25, '#adb5bd');
-  b.rect(7, 36, 14, 3, '#868e96');
-  // Upper stone battlement overhang
-  b.rect(6, 10, 16, 5, '#dee2e6');
-  // Crenelations
-  b.rect(6, 7, 3, 3, '#dee2e6');
-  b.rect(12, 7, 4, 3, '#dee2e6');
-  b.rect(19, 7, 3, 3, '#adb5bd');
-  // Pointed kingdom roof cap behind battlements
-  b.tri(8, 10, 14, 3, 20, 10, pal.main);
-  b.line(9, 9, 14, 3, pal.light);
-  // Narrow dark arrow slits + wooden door
-  b.rect(13, 18, 2, 4, '#212529');
-  b.rect(13, 25, 2, 4, '#212529');
-  b.rect(12, 32, 4, 7, '#633b1f');
+  // PVO SAM tower - concrete with radar
+  b.rect(8, 14, 12, 25, '#78909c');
+  b.rect(16, 14, 4, 25, '#546e7a');
+  b.rect(7, 36, 14, 3, '#37474f');
+  // Radar dish on top
+  b.ellipse(14, 8, 9, 4, '#b0bec5');
+  b.ellipse(14, 7, 7, 3, '#eceff1');
+  b.px(14, 4, '#00bcd4');
+  // SAM missiles vertical
+  b.rect(10, 10, 2, 7, '#e0e0e0');
+  b.px(11, 9, '#ff3d00');
+  b.rect(16, 10, 2, 7, '#e0e0e0');
+  b.px(17, 9, '#ff3d00');
+  // Door
+  b.rect(12, 32, 4, 7, '#263238');
   b.outline1px('#18131d');
   return b.toCanvas();
 }
 
 function bakeCastlePixel(pal: KingdomPalette): HTMLCanvasElement {
   const b = new PixBuf(52, 46);
-  // Central grand keep + curtain wall
-  b.rect(14, 15, 24, 27, '#ced4da');
-  b.rect(31, 15, 7, 27, '#adb5bd');
-  // High pointed royal keep roof
-  b.tri(15, 16, 26, 4, 37, 16, pal.main);
-  b.tri(26, 4, 32, 16, 37, 16, pal.dark);
-  b.line(16, 15, 26, 4, pal.light);
-
-  // Left & Right flanking stone towers
-  for (const tx of [5, 37]) {
-    b.rect(tx, 16, 10, 26, '#dee2e6');
-    b.rect(tx + 7, 16, 3, 26, '#adb5bd');
-    // Tower battlements
-    b.rect(tx - 1, 13, 3, 4, '#f1f3f5');
-    b.rect(tx + 4, 13, 3, 4, '#f1f3f5');
-    b.rect(tx + 8, 13, 3, 4, '#adb5bd');
-    b.tri(tx, 14, tx + 5, 8, tx + 10, 14, pal.dark);
-    b.rect(tx + 4, 22, 2, 4, '#212529');
-  }
-  // Portcullis iron gate + glowing windows
-  b.rect(22, 30, 8, 12, '#2b221e');
-  for (let gx = 23; gx <= 29; gx += 2) {
-    b.rect(gx, 30, 1, 12, '#868e96');
-  }
-  b.rect(22, 33, 8, 1, '#868e96');
-  b.rect(20, 20, 3, 4, '#ffe066');
-  b.rect(29, 20, 3, 4, '#ffe066');
+  // HQ Command Center - modern concrete HQ with comms
+  b.rect(12, 18, 28, 24, '#78909c');
+  b.rect(32, 18, 8, 24, '#546e7a');
+  b.rect(10, 40, 32, 3, '#37474f');
+  // Flat roof with kingdom color stripe
+  b.rect(10, 14, 32, 5, pal.main);
+  b.rect(10, 14, 32, 1, pal.light);
+  b.rect(10, 18, 32, 1, pal.dark);
+  // Antennas and satellite dish
+  b.rect(16, 6, 1, 8, '#263238'); b.px(16, 5, '#ff3d00');
+  b.rect(26, 7, 1, 7, '#263238'); b.px(26, 6, '#00bcd4');
+  b.ellipse(34, 10, 5, 4, '#eceff1'); b.ellipse(34, 9, 3, 2, '#90a4ae');
+  // Gate
+  b.rect(22, 30, 8, 12, '#263238');
+  b.rect(24, 33, 4, 5, '#4a5a3a');
+  // Windows
+  b.rect(16, 22, 4, 4, '#2b2b2b'); b.rect(17, 23, 2, 2, '#81d4fa');
+  b.rect(31, 22, 4, 4, '#2b2b2b'); b.rect(32, 23, 2, 2, '#81d4fa');
   b.outline1px('#18131d');
   return b.toCanvas();
 }
 
 function bakeSurvivorBasePixel(pal: KingdomPalette): HTMLCanvasElement {
   const b = new PixBuf(50, 44);
-  // Heavy log blockhouse core
-  b.rect(12, 14, 26, 26, '#8d552e');
-  b.rect(31, 14, 7, 26, '#6b3e1f');
-  for (let y = 16; y < 38; y += 3) {
-    b.hline(12, 37, y, '#5c3419');
-  }
-  // Kingdom roof over watch-deck
-  b.tri(11, 15, 25, 4, 39, 15, pal.main);
-  b.tri(25, 4, 32, 15, 39, 15, pal.dark);
-  b.line(12, 14, 25, 4, pal.light);
-
-  // Glowing sniper embrasure windows
-  for (const wx of [17, 23, 29]) {
-    b.rect(wx, 18, 4, 4, '#ffe066');
-    b.px(wx + 1, 19, '#fff9db');
-  }
-  // Reinforced iron-banded gate
-  b.rect(21, 27, 8, 13, '#4f3524');
-  b.rect(21, 29, 8, 2, '#adb5bd');
-  b.rect(21, 34, 8, 2, '#adb5bd');
-
-  // Outer ring of pointed wooden palisade logs left & right + sandbags!
-  for (const lx of [5, 9, 13, 34, 38, 42]) {
-    b.rect(lx, 24, 3, 16, '#a4683a');
-    b.tri(lx, 24, lx + 1, 20, lx + 3, 24, '#e7c697');
-  }
-  // Sandbags at base
-  b.rect(7, 37, 8, 3, '#dfd3ad');
-  b.rect(35, 37, 8, 3, '#dfd3ad');
+  // Concrete bunker with sandbags and camo net
+  b.rect(10, 16, 30, 22, '#78909c');
+  b.rect(30, 16, 10, 22, '#546e7a');
+  for (let y = 18; y < 36; y += 4) { b.hline(10, 39, y, '#455a64'); }
+  // Earth-covered roof
+  b.rect(8, 12, 34, 5, '#5a6d3a');
+  b.rect(8, 12, 34, 1, '#7a8a5a');
+  b.rect(8, 16, 34, 1, '#3d4a2e');
+  // Embrasures
+  for (const wx of [15, 21, 27, 33]) { b.rect(wx, 20, 3, 3, '#1a1a1a'); b.px(wx+1,21,'#ff3d00'); }
+  // Steel door
+  b.rect(20, 26, 8, 12, '#37474f'); b.rect(21, 28, 6, 2, '#607d8b');
+  // Sandbags
+  b.rect(6, 36, 10, 4, '#8d7a5a'); b.rect(34, 36, 10, 4, '#8d7a5a');
   b.outline1px('#18131d');
   return b.toCanvas();
 }
@@ -427,6 +394,135 @@ function bakeWallPixel(): HTMLCanvasElement {
   b.outline1px('#181218');
   return b.toCanvas();
 }
+
+
+function bakeRadarPixel(pal: KingdomPalette): HTMLCanvasElement {
+  const b = new PixBuf(32, 36);
+  // Base concrete
+  b.rect(10, 28, 12, 6, '#78909c');
+  b.rect(8, 32, 16, 3, '#37474f');
+  // Tower mast
+  b.rect(15, 12, 2, 16, '#546e7a');
+  b.rect(14, 10, 4, 3, '#607d8b');
+  // Rotating dish
+  b.ellipse(16, 8, 10, 3, '#eceff1');
+  b.ellipse(16, 7, 8, 2, '#b0bec5');
+  b.px(16, 5, '#00e676');
+  // Side panels
+  b.rect(8, 16, 5, 6, '#4a5a3a');
+  b.rect(19, 16, 5, 6, '#4a5a3a');
+  b.outline1px('#18131d');
+  return b.toCanvas();
+}
+
+function bakeSiloPixel(pal: KingdomPalette): HTMLCanvasElement {
+  const b = new PixBuf(28, 42);
+  // Underground silo doors open
+  b.rect(6, 30, 16, 8, '#37474f');
+  b.rect(6, 28, 16, 3, '#78909c');
+  // Missile inside
+  b.rect(13, 10, 3, 18, '#e0e0e0');
+  b.tri(13, 10, 14, 4, 16, 10, '#ff3d00');
+  b.px(14, 14, '#ff3d00');
+  b.rect(12, 24, 5, 2, '#ff3d00');
+  // Doors
+  b.rect(4, 26, 4, 10, '#546e7a');
+  b.rect(20, 26, 4, 10, '#546e7a');
+  b.px(5, 27, pal.main); b.px(21,27,pal.main);
+  b.outline1px('#18131d');
+  return b.toCanvas();
+}
+
+function bakeTankPixel(step: number): HTMLCanvasElement {
+  const b = new PixBuf(28, 18);
+  const s = step===0?0:1;
+  // Tracks
+  b.rect(3, 12, 22, 4, '#212121');
+  b.rect(4+s, 13, 20, 2, '#424242');
+  // Hull
+  b.rect(5, 8, 18, 5, '#4b5320');
+  b.rect(18, 8, 5, 5, '#3a3d2e');
+  // Turret
+  b.ellipse(10, 7, 5, 3, '#5a6d3a');
+  b.rect(9, 6, 4, 2, '#6b7a3a');
+  // Cannon
+  b.rect(14, 6, 10, 2, '#212121');
+  b.px(23,6,'#000000');
+  // Wheels
+  for(let x of [6,10,14,18]) b.ellipse(x,14,2,2,'#1a1a1a');
+  b.outline1px('#0a0a0a');
+  return b.toCanvas();
+}
+
+function bakeApcPixel(step: number): HTMLCanvasElement {
+  const b = new PixBuf(26, 16);
+  const s = step===0?0:1;
+  b.rect(3, 10, 20, 4, '#212121');
+  b.rect(5, 6, 16, 5, '#607d8b');
+  b.rect(16, 6, 6, 5, '#455a64');
+  // Turret MG
+  b.rect(10, 4, 3, 2, '#37474f');
+  b.rect(12, 3, 6, 1, '#212121');
+  // Wheels
+  for(let x of [7,12,17]) b.ellipse(x,13,2,2,'#1a1a1a');
+  if(s) b.px(8,8,'#ffffff');
+  b.outline1px('#0a0a0a');
+  return b.toCanvas();
+}
+
+function bakeFpvDronePixel(phase: number): HTMLCanvasElement {
+  const b = new PixBuf(22, 14);
+  // Body X quad
+  b.rect(9, 6, 4, 3, '#212121');
+  b.rect(10, 5, 2, 5, '#424242');
+  // Arms
+  b.line(9,6, 2,2, '#616161'); b.line(13,6, 20,2, '#616161');
+  b.line(9,8, 2,12, '#616161'); b.line(13,8, 20,12, '#616161');
+  // Props spinning blur
+  const propC = phase===0 ? '#e0e0e0' : '#90caf9';
+  b.ellipse(2,2,3,1.5, propC); b.ellipse(20,2,3,1.5, propC);
+  b.ellipse(2,12,3,1.5, propC); b.ellipse(20,12,3,1.5, propC);
+  // Camera / payload
+  b.px(11,7,'#ff3d00');
+  b.outline1px('#000000');
+  return b.toCanvas();
+}
+
+function bakeHelicopterPixelFrame(flap: number): HTMLCanvasElement {
+  const b = new PixBuf(42, 22);
+  // Fuselage
+  b.rect(12, 8, 18, 6, '#4b5320');
+  b.tri(28, 8, 38, 10, 28, 14, '#4b5320');
+  b.rect(8, 9, 6, 4, '#81a1b0');
+  b.px(9,10,'#b3e5fc');
+  // Rotor blur
+  if(flap===0){
+    b.rect(4, 6, 34, 1, '#b0bec5');
+    b.rect(6, 5, 30, 1, '#eceff1');
+  } else {
+    b.rect(6, 6, 30, 1, '#78909c');
+  }
+  // Tail rotor
+  b.rect(36, 8, 1, 5, '#212121');
+  // Skids
+  b.rect(14,14,10,1,'#212121'); b.rect(12,15,2,2,'#212121'); b.rect(22,15,2,2,'#212121');
+  // Weapons pylons
+  b.rect(14,11,6,2,'#37474f'); b.rect(22,11,4,2,'#37474f');
+  b.outline1px('#0a0a0a');
+  return b.toCanvas();
+}
+
+function bakeCruiseMissilePixel(): HTMLCanvasElement {
+  const b = new PixBuf(28, 10);
+  b.rect(6, 4, 14, 3, '#e0e0e0');
+  b.tri(20,4, 26,5, 20,7, '#e0e0e0');
+  b.tri(6,4, 2,5, 6,7, '#ff3d00');
+  b.rect(10,2,4,2,'#b0bec5'); b.rect(10,7,4,2,'#b0bec5');
+  b.px(12,5,'#ff3d00');
+  b.outline1px('#000000');
+  return b.toCanvas();
+}
+
 
 function bakeDragonPixelFrame(flap: number): HTMLCanvasElement {
   // 68x50 true 16-bit RPG Boss Fire Dragon sprite (facing right)!
@@ -767,6 +863,48 @@ function bakeHumanPixelSprite(
   return b.toCanvas();
 }
 
+/**
+ * ПИКСЕЛЬНОЕ РАЗРУШЕНИЕ: выбивает из спрайта отдельные пиксели (осколки/пробоины),
+ * оставляя рваные края и тёмную копоть. Работает на уровне реальных пикселей спрайта!
+ */
+function erodeCanvas(src: HTMLCanvasElement, level: number, seed: number): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = src.width;
+  c.height = src.height;
+  const ctx = c.getContext('2d')!;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(src, 0, 0);
+  const img = ctx.getImageData(0, 0, c.width, c.height);
+  const d = img.data;
+  let s = seed * 9301 + 49297;
+  const rnd = () => {
+    s = (s * 9301 + 49297) % 233280;
+    return s / 233280;
+  };
+  const keepChance = level === 1 ? 0.74 : 0.42;
+  for (let y = 0; y < c.height; y++) {
+    for (let x = 0; x < c.width; x++) {
+      const o = (y * c.width + x) * 4;
+      if (d[o + 3] === 0) continue;
+      const r = rnd();
+      // нижние ряды разрушаются сильнее — здание «оседает»
+      const bias = 1 - (y / c.height) * (level === 1 ? 0.18 : 0.34);
+      if (r > keepChance * bias) {
+        d[o + 3] = 0; // настоящая пробоина — сквозь неё видно землю!
+        continue;
+      }
+      if (r > keepChance * bias - 0.22) {
+        // копоть и сколы по краям пробоин
+        d[o] = Math.max(0, d[o] * 0.45);
+        d[o + 1] = Math.max(0, d[o + 1] * 0.42);
+        d[o + 2] = Math.max(0, d[o + 2] * 0.44);
+      }
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return c;
+}
+
 export class ModelAtlas {
   public readonly treeSprites: HTMLCanvasElement[] = [];
   public readonly stumpSprite: HTMLCanvasElement;
@@ -779,7 +917,16 @@ export class ModelAtlas {
   public readonly baseSprites: HTMLCanvasElement[] = [];
   public readonly ruinSprite: HTMLCanvasElement;
   public readonly wallSprite: HTMLCanvasElement;
+  public readonly radarSprites: HTMLCanvasElement[] = [];
+  public readonly siloSprites: HTMLCanvasElement[] = [];
   public readonly dragonSprites: HTMLCanvasElement[] = [];
+  public readonly helicopterSprites: HTMLCanvasElement[] = [];
+  public readonly tankSprites: HTMLCanvasElement[] = [];
+  public readonly tankSpritesFlip: HTMLCanvasElement[] = [];
+  public readonly apcSprites: HTMLCanvasElement[] = [];
+  public readonly apcSpritesFlip: HTMLCanvasElement[] = [];
+  public readonly fpvDroneSprites: HTMLCanvasElement[] = [];
+  public readonly cruiseSprite: HTMLCanvasElement;
   public readonly sheepSprites: HTMLCanvasElement[] = [];
   public readonly sheepSpritesFlip: HTMLCanvasElement[] = [];
   public readonly wolfSprites: HTMLCanvasElement[] = [];
@@ -791,6 +938,8 @@ export class ModelAtlas {
   public readonly humanCache = new Map<number, HTMLCanvasElement>();
   public readonly tntSprite: HTMLCanvasElement;
   public readonly goldSprite: HTMLCanvasElement;
+  private readonly dmgCache = new Map<number, HTMLCanvasElement>();
+  private readonly spriteBank: HTMLCanvasElement[][] = [];
 
   constructor() {
     this.wheatSprite = bakeWheatPixel();
@@ -800,6 +949,7 @@ export class ModelAtlas {
     this.wallSprite = bakeWallPixel();
     this.goldSprite = bakeGoldPixel();
     this.tntSprite = bakeTntPixel();
+    this.cruiseSprite = bakeCruiseMissilePixel();
 
     for (const pal of KINGDOM_PALETTES) {
       this.cottageSprites.push(bakeCottagePixel(pal));
@@ -807,6 +957,8 @@ export class ModelAtlas {
       this.towerSprites.push(bakeTowerPixel(pal));
       this.castleSprites.push(bakeCastlePixel(pal));
       this.baseSprites.push(bakeSurvivorBasePixel(pal));
+      this.radarSprites.push(bakeRadarPixel(pal));
+      this.siloSprites.push(bakeSiloPixel(pal));
     }
 
     this.dragonSprites = [
@@ -814,6 +966,28 @@ export class ModelAtlas {
       bakeDragonPixelFrame(1),
       bakeDragonPixelFrame(2),
     ];
+    this.helicopterSprites = [
+      bakeHelicopterPixelFrame(0),
+      bakeHelicopterPixelFrame(1),
+      bakeHelicopterPixelFrame(0),
+    ];
+    this.tankSprites = [bakeTankPixel(0), bakeTankPixel(1)];
+    this.tankSpritesFlip = this.tankSprites.map(flipCanvasHorizontal);
+    this.apcSprites = [bakeApcPixel(0), bakeApcPixel(1)];
+    this.apcSpritesFlip = this.apcSprites.map(flipCanvasHorizontal);
+    this.fpvDroneSprites = [bakeFpvDronePixel(0), bakeFpvDronePixel(1)];
+
+    // Банк спрайтов зданий для попиксельного разрушения
+    this.spriteBank[1] = this.stumpSprite ? [this.stumpSprite] : [this.cottageSprites[0]];
+    this.spriteBank[2] = this.cottageSprites;   // казарма
+    this.spriteBank[3] = this.castleSprites;    // штаб
+    this.spriteBank[4] = this.farmSprites;      // склад ГСМ
+    this.spriteBank[5] = this.towerSprites;     // ПВО
+    this.spriteBank[6] = [this.ruinSprite];
+    this.spriteBank[7] = this.baseSprites;      // бункер
+    this.spriteBank[8] = [this.wallSprite];
+    this.spriteBank[9] = this.radarSprites;     // РЛС
+    this.spriteBank[10] = this.siloSprites;     // шахта
     this.sheepSprites = [bakeSheepPixel(0), bakeSheepPixel(1)];
     this.sheepSpritesFlip = this.sheepSprites.map(flipCanvasHorizontal);
     this.wolfSprites = [bakeWolfPixel(0), bakeWolfPixel(1)];
@@ -822,6 +996,22 @@ export class ModelAtlas {
     this.zombieSpritesFlip = this.zombieSprites.map(flipCanvasHorizontal);
     this.skeletonSprites = [bakeSkeletonPixel(0), bakeSkeletonPixel(1)];
     this.skeletonSpritesFlip = this.skeletonSprites.map(flipCanvasHorizontal);
+  }
+
+  /**
+   * Возвращает спрайт здания с ПОПИКСЕЛЬНЫМИ разрушениями.
+   * stage: 0 = целое, 1 = пробоины, 2 = полуразрушено (каркас)
+   */
+  public getDamagedBuilding(kind: number, kIdx: number, stage: number): HTMLCanvasElement {
+    const bank = this.spriteBank[kind] || this.spriteBank[2];
+    const base = bank[kIdx % bank.length];
+    if (stage <= 0) return base;
+    const key = (kind & 15) | ((kIdx & 7) << 4) | ((stage & 3) << 7);
+    const cached = this.dmgCache.get(key);
+    if (cached) return cached;
+    const eroded = erodeCanvas(base, stage, key + 17);
+    this.dmgCache.set(key, eroded);
+    return eroded;
   }
 
   public getHumanSprite(

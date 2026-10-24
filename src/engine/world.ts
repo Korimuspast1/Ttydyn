@@ -72,7 +72,7 @@ export class WorldState {
   public road = new Float32Array(WORLD_SIZE);
   public territory = new Uint8Array(WORLD_SIZE);
 
-  // 0 = none, 1 = campfire, 2 = cottage, 3 = royal castle, 4 = farmhouse+windmill, 5 = watchtower
+  // 0 = none, 1 = sandbag nest, 2 = barracks, 3 = HQ castle, 4 = depot/factory, 5 = PVO tower, 6 = ruins, 7 = bunker, 8 = barrier, 9 = radar, 10 = silo
   public buildings = new Uint8Array(WORLD_SIZE);
   public buildingHp = new Float32Array(WORLD_SIZE);
   public buildingSettlement = new Uint8Array(WORLD_SIZE);

@@ -378,4 +378,102 @@ export class SoundEffects {
       osc.stop(now + 0.58);
     }
   }
+
+  /** Рев реактивного двигателя / ракеты (для баллистики и крылатых ракет) */
+  public playMissileLaunch(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+
+    // Белый шум через полосовой фильтр = рёв сопла
+    const dur = 1.1;
+    const buffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      const p = i / data.length;
+      data[i] = (Math.random() * 2 - 1) * (1 - p * 0.55);
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.Q.value = 1.1;
+    bp.frequency.setValueAtTime(320, now);
+    bp.frequency.exponentialRampToValueAtTime(1500, now + dur);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.10, now + 0.09);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+    src.connect(bp);
+    bp.connect(gain);
+    gain.connect(ctx.destination);
+    src.start(now);
+    src.stop(now + dur);
+  }
+
+  /** Жужжание FPV-дрона (высокооборотистые пропеллеры) */
+  public playDroneBuzz(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    if (now - this.lastHornTime < 0.35) return;
+    this.lastHornTime = now;
+
+    const dur = 0.5;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(180, now);
+    osc.frequency.linearRampToValueAtTime(260, now + dur);
+
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 420;
+
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.035, now + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+    osc.connect(hp);
+    hp.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + dur + 0.02);
+  }
+
+  /** Очередь стрелкового оружия (для пехоты) */
+  public playGunfire(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    if (now - this.lastHornTime < 0.18) return;
+    this.lastHornTime = now;
+
+    for (let s = 0; s < 3; s++) {
+      const t0 = now + s * 0.075;
+      const dur = 0.09;
+      const buffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < data.length; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / data.length, 2.2);
+      }
+      const src = ctx.createBufferSource();
+      src.buffer = buffer;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 1100 + s * 120;
+      bp.Q.value = 0.8;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.085, t0);
+      gain.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+      src.connect(bp);
+      bp.connect(gain);
+      gain.connect(ctx.destination);
+      src.start(t0);
+      src.stop(t0 + dur);
+    }
+  }
 }
