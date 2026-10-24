@@ -10,6 +10,7 @@ Duckgomz is a native Android messaging app written in Java. It uses a dark, Tele
 - Private groups with up to 20 members; members can add other users by username.
 - File attachments stored in Firebase Storage, limited to 20 MB per file.
 - Four main tabs: Chats, Contacts, Settings, and Profile. Channels are intentionally not included.
+- Springy press feedback on buttons and tappable rows, plus a glossy, elastic bottom-tab indicator inspired by iPhone Liquid Glass movement.
 - Original Duckgomz geometric-duck branding, including the selected launcher icon in `artifacts/Duckgomz-icon.png` and original vector assets in `android/app/src/main/assets/svg/`.
 - A device-local Duckgomz demo bot. Its messages and attachment metadata are stored in an AES-GCM encrypted local history using an Android Keystore key.
 - A best-effort encrypted local cache for recent cloud messages. Cloud messages and attachments are **not end-to-end encrypted**.

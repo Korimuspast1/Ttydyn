@@ -7,6 +7,7 @@ import android.database.Cursor;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -15,6 +16,7 @@ import android.provider.OpenableColumns;
 import android.text.InputFilter;
 import android.text.InputType;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -30,11 +32,15 @@ import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.view.animation.DecelerateInterpolator;
+import android.view.animation.OvershootInterpolator;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.FileProvider;
+import androidx.dynamicanimation.animation.DynamicAnimation;
+import androidx.dynamicanimation.animation.SpringAnimation;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
@@ -326,6 +332,7 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout.LayoutParams switchParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         switchParams.topMargin = dp(22);
         form.addView(switchMode, switchParams);
+        attachPressAnimation(switchMode);
         switchMode.setOnClickListener(view -> {
             registerMode = !registerMode;
             authError = "";
@@ -544,6 +551,7 @@ public class MainActivity extends AppCompatActivity {
         remoteThreads.clear();
         activeThread = null;
         conversationOpen = false;
+        currentTab = TAB_CHATS;
         registerMode = false;
         authError = "";
         showAuthScreen();
@@ -595,6 +603,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showMainTab(int tab) {
+        int previousTab = currentTab;
+        boolean animateTabChange = tab != previousTab;
         currentTab = tab;
         conversationOpen = false;
         activeThread = null;
@@ -644,7 +654,17 @@ public class MainActivity extends AppCompatActivity {
             body.addView(add, addParams);
             add.setOnClickListener(view -> showCreateChatOptions());
         }
-        screen.addView(createBottomNavigation(tab));
+        screen.addView(createBottomNavigation(tab, previousTab, animateTabChange));
+        if (animateTabChange) {
+            screen.setAlpha(.96f);
+            screen.setTranslationY(dp(5));
+            screen.animate()
+                    .alpha(1f)
+                    .translationY(0f)
+                    .setDuration(260)
+                    .setInterpolator(new DecelerateInterpolator(1.4f))
+                    .start();
+        }
     }
 
     private void addMainToolbar(LinearLayout screen, int tab) {
@@ -790,6 +810,7 @@ public class MainActivity extends AppCompatActivity {
             row.addView(details, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         }
 
+        attachPressAnimation(row);
         row.setOnClickListener(view -> openThread(thread));
         row.setContentDescription((contactRow ? "Open contact " : "Open chat ") + thread.displayName(currentUid()));
         return row;
@@ -838,18 +859,40 @@ public class MainActivity extends AppCompatActivity {
         return clean.substring(0, 1).toUpperCase(Locale.ROOT);
     }
 
-    private LinearLayout createBottomNavigation(int selected) {
-        LinearLayout nav = new LinearLayout(this);
-        nav.setOrientation(LinearLayout.HORIZONTAL);
-        nav.setGravity(Gravity.CENTER_VERTICAL);
+    private FrameLayout createBottomNavigation(int selected, int previous, boolean animateSelection) {
+        FrameLayout nav = new FrameLayout(this);
+        nav.setClipChildren(false);
+        nav.setClipToPadding(false);
         nav.setPadding(dp(5), dp(5), dp(5), dp(5));
-        nav.setBackground(rounded(SURFACE, Color.TRANSPARENT, dp(27)));
+        nav.setBackground(liquidTrayDrawable());
         LinearLayout.LayoutParams navParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(66));
         navParams.leftMargin = dp(12);
         navParams.rightMargin = dp(12);
         navParams.topMargin = dp(4);
         navParams.bottomMargin = dp(7);
         nav.setLayoutParams(navParams);
+
+        FrameLayout indicator = new FrameLayout(this);
+        indicator.setBackground(liquidIndicatorDrawable());
+        indicator.setClipChildren(true);
+        indicator.setClipToOutline(true);
+        indicator.setElevation(dp(5));
+        FrameLayout.LayoutParams indicatorParams = new FrameLayout.LayoutParams(dp(48), dp(56), Gravity.TOP | Gravity.START);
+        nav.addView(indicator, indicatorParams);
+
+        View gloss = new View(this);
+        gloss.setBackground(liquidGlossDrawable());
+        indicator.addView(gloss, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(27), Gravity.TOP));
+        View sweep = new View(this);
+        sweep.setBackground(glassSweepDrawable());
+        sweep.setAlpha(0f);
+        indicator.addView(sweep, new FrameLayout.LayoutParams(dp(42), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP | Gravity.START));
+
+        LinearLayout items = new LinearLayout(this);
+        items.setOrientation(LinearLayout.HORIZONTAL);
+        items.setGravity(Gravity.CENTER_VERTICAL);
+        nav.addView(items, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
         int[] icons = new int[]{R.drawable.ic_tab_chats, R.drawable.ic_tab_contacts, R.drawable.ic_tab_settings, R.drawable.ic_tab_profile};
         String[] labels = new String[]{"Chats", "Contacts", "Settings", "Profile"};
         for (int index = 0; index < labels.length; index++) {
@@ -859,20 +902,126 @@ public class MainActivity extends AppCompatActivity {
             item.setOrientation(LinearLayout.VERTICAL);
             item.setGravity(Gravity.CENTER);
             item.setPadding(dp(5), dp(4), dp(5), dp(3));
-            item.setBackground(rounded(active ? Color.rgb(52, 57, 83) : Color.TRANSPARENT, Color.TRANSPARENT, dp(22)));
-            nav.addView(item, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
+            item.setBackground(rippleRounded(Color.TRANSPARENT, dp(22)));
+            items.addView(item, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
             ImageView icon = new ImageView(this);
             icon.setImageResource(icons[index]);
-            icon.setColorFilter(active ? Color.rgb(119, 146, 255) : MUTED);
+            icon.setColorFilter(active ? Color.rgb(224, 231, 255) : MUTED);
             item.addView(icon, new LinearLayout.LayoutParams(dp(23), dp(23)));
-            TextView label = text(labels[index], 10, active ? Color.rgb(131, 154, 255) : MUTED, active);
+            TextView label = text(labels[index], 10, active ? Color.rgb(236, 240, 255) : MUTED, active);
             LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             labelParams.topMargin = dp(2);
             item.addView(label, labelParams);
             item.setContentDescription(labels[index]);
-            item.setOnClickListener(view -> showMainTab(tab));
+            attachPressAnimation(item);
+            item.setOnClickListener(view -> {
+                if (tab != currentTab) showMainTab(tab);
+            });
+            if (animateSelection && active) {
+                icon.setScaleX(.88f);
+                icon.setScaleY(.88f);
+                icon.setAlpha(.76f);
+                icon.animate().scaleX(1f).scaleY(1f).alpha(1f)
+                        .setStartDelay(90)
+                        .setDuration(360)
+                        .setInterpolator(new OvershootInterpolator(1.15f))
+                        .start();
+            }
         }
+
+        nav.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+            private boolean positioned;
+
+            @Override
+            public void onLayoutChange(View view, int left, int top, int right, int bottom,
+                                      int oldLeft, int oldTop, int oldRight, int oldBottom) {
+                if (positioned || right - left <= 0) return;
+                positioned = true;
+                nav.removeOnLayoutChangeListener(this);
+                int availableWidth = nav.getWidth() - nav.getPaddingLeft() - nav.getPaddingRight();
+                int itemWidth = availableWidth / labels.length;
+                if (itemWidth <= 0) return;
+                int pillWidth = itemWidth - dp(6);
+                FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) indicator.getLayoutParams();
+                params.width = pillWidth;
+                params.height = dp(56);
+                params.leftMargin = selected * itemWidth + dp(3);
+                params.topMargin = 0;
+                indicator.setLayoutParams(params);
+                if (animateSelection && previous >= 0 && previous < labels.length) {
+                    float startOffset = (previous - selected) * itemWidth;
+                    playLiquidIndicator(indicator, sweep, startOffset, pillWidth);
+                }
+            }
+        });
         return nav;
+    }
+
+    private Drawable liquidTrayDrawable() {
+        GradientDrawable tray = new GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{Color.argb(142, 105, 120, 166), Color.argb(158, 54, 59, 91), Color.argb(186, 34, 36, 57)});
+        tray.setCornerRadius(dp(29));
+        tray.setStroke(dp(1), Color.argb(74, 239, 243, 255));
+        return tray;
+    }
+
+    private Drawable liquidIndicatorDrawable() {
+        GradientDrawable pill = new GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{Color.argb(111, 211, 225, 255), Color.argb(83, 125, 151, 255), Color.argb(94, 82, 103, 226)});
+        pill.setCornerRadius(dp(23));
+        pill.setStroke(dp(1), Color.argb(132, 239, 244, 255));
+        return pill;
+    }
+
+    private Drawable liquidGlossDrawable() {
+        GradientDrawable gloss = new GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{Color.argb(90, 255, 255, 255), Color.argb(28, 255, 255, 255), Color.TRANSPARENT});
+        gloss.setCornerRadius(dp(23));
+        return gloss;
+    }
+
+    private Drawable glassSweepDrawable() {
+        return new GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[]{Color.TRANSPARENT, Color.argb(150, 238, 244, 255), Color.argb(74, 168, 190, 255), Color.TRANSPARENT});
+    }
+
+    private void playLiquidIndicator(FrameLayout indicator, View sweep, float startOffset, int pillWidth) {
+        indicator.setTranslationX(startOffset);
+        indicator.setScaleX(.94f);
+        indicator.setScaleY(.92f);
+        indicator.setAlpha(.94f);
+
+        SpringAnimation glide = new SpringAnimation(indicator, DynamicAnimation.TRANSLATION_X, 0f);
+        glide.getSpring().setStiffness(1050f).setDampingRatio(.72f);
+        glide.addUpdateListener((animation, value, velocity) -> {
+            float stretch = Math.min(.24f, Math.abs(velocity) / 4200f);
+            indicator.setScaleX(1f + stretch);
+            indicator.setScaleY(1f - stretch * .28f);
+        });
+        glide.addEndListener((animation, canceled, value, velocity) -> {
+            indicator.setScaleX(1f);
+            indicator.setScaleY(1f);
+            indicator.setAlpha(1f);
+        });
+        glide.start();
+
+        sweep.setTranslationX(-pillWidth * .8f);
+        sweep.animate().cancel();
+        sweep.animate()
+                .translationX(pillWidth * 1.2f)
+                .alpha(.78f)
+                .setStartDelay(35)
+                .setDuration(460)
+                .setInterpolator(new DecelerateInterpolator(1.6f))
+                .withEndAction(() -> {
+                    sweep.setAlpha(0f);
+                    sweep.setTranslationX(-pillWidth * .8f);
+                })
+                .start();
     }
 
     private void addSettings(LinearLayout content) {
@@ -919,6 +1068,7 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout.LayoutParams detailParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         detailParams.topMargin = dp(3);
         copy.addView(detail, detailParams);
+        attachPressAnimation(row);
         row.setOnClickListener(view -> action.run());
     }
 
@@ -1348,6 +1498,7 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout.LayoutParams subtitleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         subtitleParams.topMargin = dp(2);
         titleBlock.addView(subtitle, subtitleParams);
+        attachPressAnimation(titleBlock);
         titleBlock.setOnClickListener(view -> showThreadInfo(activeThread));
         ImageButton info = imageButton(R.drawable.ic_info, "Chat details");
         info.setColorFilter(MUTED);
@@ -1803,6 +1954,7 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout.LayoutParams detailParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         detailParams.topMargin = dp(3);
         copy.addView(detail, detailParams);
+        attachPressAnimation(row);
         row.setOnClickListener(view -> action.run());
     }
 
@@ -1987,6 +2139,7 @@ public class MainActivity extends AppCompatActivity {
         button.setPadding(dp(10), dp(10), dp(10), dp(10));
         button.setBackground(rippleRounded(Color.TRANSPARENT, dp(14)));
         button.setContentDescription(description);
+        attachPressAnimation(button);
         return button;
     }
 
@@ -2001,7 +2154,37 @@ public class MainActivity extends AppCompatActivity {
         button.setBackgroundTintList(ColorStateList.valueOf(BLUE));
         button.setInsetTop(0);
         button.setInsetBottom(0);
+        attachPressAnimation(button);
         return button;
+    }
+
+    private void attachPressAnimation(View target) {
+        target.setOnTouchListener((view, event) -> {
+            int action = event.getActionMasked();
+            if (action == MotionEvent.ACTION_DOWN) {
+                if (!view.isEnabled()) return false;
+                view.animate().cancel();
+                view.animate()
+                        .scaleX(.93f)
+                        .scaleY(.93f)
+                        .alpha(.84f)
+                        .translationY(dp(1))
+                        .setDuration(90)
+                        .setInterpolator(new DecelerateInterpolator(2f))
+                        .start();
+            } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                view.animate().cancel();
+                view.animate()
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .alpha(1f)
+                        .translationY(0f)
+                        .setDuration(380)
+                        .setInterpolator(new OvershootInterpolator(.85f))
+                        .start();
+            }
+            return false;
+        });
     }
 
     private TextView text(String value, float sizeSp, int color, boolean bold) {
